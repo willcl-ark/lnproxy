@@ -24,17 +24,20 @@ async def unlink_socket(sock):
             raise
 
 
-async def proxy(read_stream, write_stream):
+async def proxy(read_stream, write_stream, direction):
     """Proxy traffic from one stream to another
     """
-    logger.debug(f"Proxy started")
+    logger.debug(f"{direction} proxy started")
     while True:
         try:
-            for data in read_stream.read():
-                # data = await read_stream.receive_some(RECV_BUF)
-                await write_stream.send_all(data)
-                logger.debug(f"{len(data)}B of data proxied")
-                hexdump(data)
+            # for data in read_stream:
+            data = await read_stream.receive_some(RECV_BUF)
+            if not data:
+                logger.debug("Connection closed by remote")
+                break
+            await write_stream.send_all(data)
+            logger.debug(f"{direction}: {len(data)}B ")
+            hexdump(data)
         except:
             raise
 
@@ -47,8 +50,8 @@ async def socket_handler(server_stream):
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy, server_stream, client_stream)
-            nursery.start_soon(proxy, client_stream, server_stream)
+            nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
+            nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
     except Exception as exc:
         print(f"unix_handler: crashed: {exc}")
 
@@ -60,6 +63,7 @@ async def serve_unix_socket():
     sock = trio.socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     await sock.bind(SRV_SOCK)
     sock.listen()
+    logger.debug(f"Listening on Unix Socket: {SRV_SOCK}")
     listener = trio.SocketListener(sock)
 
     # Manage the listening with the handler
