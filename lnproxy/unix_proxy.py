@@ -1,8 +1,8 @@
 import logging
 import socket
+import struct
 
 import trio
-from util import hexdump
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -10,34 +10,84 @@ logger = logging.getLogger("PROXYSRV")
 
 SRV_SOCK = "/tmp/unix_proxy"
 CLIENT_SOCK = "/tmp/l2-regtest/unix_socket"
-RECV_BUF = 210
+# RECV_BUF = 210
+MAX_PKT_LEN = 65569
+MSG_LEN = 2
+MSG_LEN_MAC = 16
+MSG_HEADER = MSG_LEN + MSG_LEN_MAC
+MSG_MAC = 16
 
 
 async def unlink_socket(sock):
     """Unlink a Unix Socket
     """
-    p = trio.Path(sock)
+    socket_path = trio.Path(sock)
     try:
-        await p.unlink()
+        await socket_path.unlink()
     except OSError:
-        if await p.exists():
+        if await socket_path.exists():
             raise
 
 
 async def proxy(read_stream, write_stream, direction):
     """Proxy traffic from one stream to another
     """
-    logger.debug(f"{direction} proxy started")
+
+    # Bolt #8: The handshake proceeds in three acts, taking 1.5 round trips.
+    handshake_acts = 2 if direction == "Outbound" else 1
+    i = 0
+
     while True:
         try:
-            # for data in read_stream:
-            data = await read_stream.receive_some(RECV_BUF)
-            if not data:
-                logger.debug("Connection closed by remote")
-                break
-            await write_stream.send_all(data)
-            logger.debug(f"{direction}: {len(data)}B ")
-            hexdump(data)
+            if i < handshake_acts:
+
+                # during handshake pass full 50 / 66 B messages transparently for now
+                logger.debug(f"{direction} handshake message {i}")
+                message = await read_stream.receive_some(MAX_PKT_LEN)
+
+            else:
+
+                # Bolt #8: Read exactly 18 bytes from the network buffer.
+                header = await read_stream.receive_some(MSG_HEADER)
+                if len(header) != 18:
+                    logger.debug(
+                        f"{direction} could not get header length: 18 != {len(header)}"
+                    )
+                    break
+
+                # Bolt #8: 2-byte encrypted message length
+                body_len = struct.unpack(">H", header[:2])[0]
+                logger.debug(f"Encrypted message length: {body_len}")
+
+                # Bolt #8: 16-byte MAC of the encrypted message length
+                len_mac = struct.unpack("16s", header[-16:])[0]
+                logger.debug(f"MAC of the encrypted message length: {len_mac}")
+
+                # # Bolt #8: encrypted Lightning message
+                # body = await read_stream.receive_some(body_len)
+                # # unsigned char[] ('B') from openssl/aead.py:_decode
+                # body = struct.unpack(f"{body_len}B", body)
+                # logger.debug(f"Encrypted Lightning message:\n{body}")
+                #
+                # # Bolt #8: 16 Byte MAC of the Lightning message
+                # body_mac = await read_stream.receive_some(MSG_MAC)
+                # logger.debug(
+                #     f"MAC of the Lightning message: {struct.unpack('16B', body_mac)}"
+                # )
+                #
+                # # re-constitute the header and body
+                # message = header + body + body_mac
+
+                # TODO: Remove and replace with above when decryption working
+                body = await read_stream.receive_some(MAX_PKT_LEN)
+                logger.debug(f"Encrypted Lightning message:\n{body}")
+
+                message = header + body
+
+            # send to remote
+            await write_stream.send_all(message)
+            logger.debug(f"{direction}: {len(message)}B ")
+            i += 1
         except:
             raise
 
@@ -50,10 +100,13 @@ async def socket_handler(server_stream):
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
+            logger.debug(f"Starting proxy")
             nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
             nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
     except Exception as exc:
-        print(f"unix_handler: crashed: {exc}")
+        print(f"socket_handler: crashed: {exc}")
+    finally:
+        await client_stream.aclose()
 
 
 async def serve_unix_socket():
