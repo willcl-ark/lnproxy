@@ -4,9 +4,10 @@ import struct
 
 import trio
 
+import messages
 
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("PROXY ")
+logger = logging.getLogger("{:<5}".format("PROXY"))
 
 SRV_SOCK = "/tmp/unix_proxy"
 CLIENT_SOCK = "/tmp/l2-regtest/unix_socket"
@@ -43,7 +44,7 @@ async def proxy(read_stream, write_stream, direction):
 
                 # during handshake pass full 50 / 66 B messages transparently for now
                 # TODO: mock these!
-                logger.debug(f"{direction} handshake message {i}")
+                logger.debug(f"{direction} handshake message {i + 1}")
                 message = await read_stream.receive_some(MAX_PKT_LEN)
 
             else:
@@ -59,28 +60,26 @@ async def proxy(read_stream, write_stream, direction):
 
                 # Bolt #8: 2-byte encrypted message length
                 body_len = struct.unpack(">H", header[:MSG_LEN])[0]
-                logger.debug(f"Decrypted message length: {body_len}")
 
                 # Bolt #8: 16-byte MAC of the encrypted message length
-                len_mac = struct.unpack("16s", header[-16:])[0]
-                # logger.debug(f"MAC of the decrypted message length: {len_mac}")
+                body_len_mac = struct.unpack("16s", header[-16:])[0]
 
                 # Bolt #8: (de)encrypted Lightning message
                 body = await read_stream.receive_some(body_len)
-                logger.debug(f"Decrypted Lightning message:\n{body}")
+
+                # parse the message
+                messages.parse_message(body, direction)
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await read_stream.receive_some(MSG_MAC)
-                # logger.debug(
-                #     f"MAC of the Lightning message: {struct.unpack('16B', body_mac)}"
-                # )
 
                 # re-constitute the header and body
                 message = header + body + body_mac
 
             # send to remote
             await write_stream.send_all(message)
-            logger.debug(f"{direction}: {len(message)}B ")
+
+            # increment handshake counter
             i += 1
         except:
             raise
@@ -96,7 +95,7 @@ async def socket_handler(server_stream):
         async with trio.open_nursery() as nursery:
             logger.debug(f"Starting proxy")
             nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
-            nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
+            nursery.start_soon(proxy, client_stream, server_stream, "Inbound ")
     except Exception as exc:
         print(f"socket_handler: crashed: {exc}")
     finally:
