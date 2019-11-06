@@ -1,6 +1,8 @@
-import io
+import json
+import os
 import logging
 import struct
+import subprocess
 
 """
 byte: an 8-bit byte
@@ -39,43 +41,85 @@ be_u64 = ">Q"
 le_32b = "<32s"
 le_onion = "<1366s"
 
+# TODO: Hardcodes to get rid of later
+LN_CLI = "/Users/will/src/lightning/cli/lightning-cli"
+L2_DIR = "--lightning-dir=/tmp/l2-regtest"
+ONION_TOOL = "/Users/will/src/lightning/devtools/onion"
 
-def deserialize_type(bytestream: io.BytesIO) -> int:
+
+def deserialize_type(msg_type: bytes) -> int:
     """Deserialize the lightning message type
     """
-    return struct.unpack_from(be_u16, bytestream.read(2))[0]
+    return struct.unpack(be_u16, msg_type)[0]
 
 
-def parse_update_add_htlc(bytestream: io.BytesIO, msg_len: int):
+def parse_update_add_htlc(msg_payload: bytes, direction: str) -> bytes:
     """Parse an update_add_htlc
     """
-    if msg_len != 1452:
-        return ValueError(f"update_add_htlc length mismatch: 1452 != {msg_len}")
-    channel_id = struct.unpack_from(le_32b, bytestream.read(32))[0]
-    id = struct.unpack_from(be_u64, bytestream.read(8))[0]
-    amount_msat = struct.unpack_from(be_u64, bytestream.read(8))[0]
-    payment_hash = struct.unpack_from(le_32b, bytestream.read(32))[0]
-    cltv_expiry = struct.unpack_from(be_u32, bytestream.read(4))[0]
-    onion = struct.unpack_from(le_onion, bytestream.read(1366))[0]
+    if len(msg_payload) != 1450:
+        logger.debug(
+            ValueError(
+                f"update_add_htlc body length mismatch: 1452 != {len(msg_payload)}"
+            )
+        )
+
+    channel_id = struct.unpack(le_32b, msg_payload[0:32])[0]
+    id = struct.unpack(be_u64, msg_payload[32:40])[0]
+    amount_msat = struct.unpack(be_u64, msg_payload[40:48])[0]
+    payment_hash = struct.unpack(le_32b, msg_payload[48:80])[0]
+    cltv_expiry = struct.unpack(be_u32, msg_payload[80:84])[0]
+    onion = struct.unpack(le_onion, msg_payload[84:1450])[0]
+
     logger.debug(f"Channel_id: {channel_id.hex()}")
     logger.debug(f"ID: {id}")
     logger.debug(f"Amount msat: {amount_msat}")
     logger.debug(f"Payment Hash: {payment_hash.hex()}")
     logger.debug(f"CLTV expiry: {cltv_expiry}")
-    logger.debug(f"Onion length: {len(onion)}")
-    logger.debug(f"Onion hex:\n{onion.hex()}")
+    logger.debug(f"Orig onion length: {len(onion)}")
+    logger.debug(f"Orig onion hex:\n{onion.hex()}")
+    logger.debug("Generating new onion...")
+
+    my_node_pubkey = json.loads(
+        subprocess.run([LN_CLI, L2_DIR, "getinfo"], capture_output=True).stdout.decode()
+    )["id"]
+
+    gen_onion = subprocess.run(
+        [
+            ONION_TOOL,
+            "generate",
+            f"{my_node_pubkey}",
+            "--assoc-data",
+            f"{payment_hash.hex()}",
+        ],
+        capture_output=True,
+    ).stdout.decode()
+    gen_onion_bytes = bytes.fromhex(gen_onion)
+    logger.debug(f"Generated onion:\n{gen_onion}\n Size: {len(gen_onion_bytes)}")
+
+    modified_payload = msg_payload[0:84]
+    modified_payload += struct.pack(le_onion, gen_onion_bytes)
+
+    if direction == "Outbound":
+        return modified_payload
+    return msg_payload
 
 
-def parse_message(msg: bytes, direction: str):
-    """Parse a lightning message
+def parse_message(msg: bytes, direction: str) -> bytes:
+    """Parse a lightning message and return it
     """
-    msg_len = len(msg)
+    msg_type = msg[0:2]
+    msg_payload = msg[2:]
 
-    with io.BytesIO(msg) as f:
-        msg_type = deserialize_type(f)
-        logger.debug(
-            "{:>8} | type: {:^3d} | len: {:>4d}B".format(direction, msg_type, msg_len)
+    # check the message type
+    msg_code = deserialize_type(msg_type)
+    logger.debug(
+        "{:>8} | type: {:^3d} | len: {:>4d}B".format(
+            direction, msg_code, len(msg_payload)
         )
+    )
 
-        if msg_type == 128:
-            parse_update_add_htlc(f, msg_len)
+    # handle htlc_updates
+    if msg_code == 128:
+        return msg_type + parse_update_add_htlc(msg_payload, direction)
+
+    return msg_type + msg_payload

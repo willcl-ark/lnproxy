@@ -68,7 +68,7 @@ async def proxy(read_stream, write_stream, direction):
                 body = await read_stream.receive_some(body_len)
 
                 # parse the message
-                messages.parse_message(body, direction)
+                body = messages.parse_message(body, direction)
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await read_stream.receive_some(MSG_MAC)
