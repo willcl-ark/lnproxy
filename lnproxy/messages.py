@@ -1,5 +1,4 @@
 import json
-import os
 import logging
 import struct
 import subprocess
@@ -45,6 +44,38 @@ le_onion = "<1366s"
 LN_CLI = "/Users/will/src/lightning/cli/lightning-cli"
 L2_DIR = "--lightning-dir=/tmp/l2-regtest"
 ONION_TOOL = "/Users/will/src/lightning/devtools/onion"
+
+
+def decode_hop_data(hop_data: hex):
+    """Decode a hex encoded legacy 'hop_data' payload
+    https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
+    """
+    short_channel_id = struct.unpack_from(be_u64, hop_data)[0]
+    amt_to_forward = struct.unpack_from(be_u64, hop_data, 8)[0]
+    outgoing_cltv_value = struct.unpack_from(be_u32, hop_data, 16)[0]
+    padding = struct.unpack_from(">12B", hop_data, 20)[0]
+    logger.debug(
+        f"short_channel_id: {short_channel_id}\n"
+        f"amt_to_forward: {amt_to_forward}\n"
+        f"outgoing_cltv_value: {outgoing_cltv_value}\n"
+        f"padding: {padding}"
+    )
+    return short_channel_id, amt_to_forward, outgoing_cltv_value
+
+
+def encode_hop_data(
+    short_channel_id: str, amt_to_forward: int, outgoing_cltv_value: int
+) -> hex:
+    """Encode a legacy 'hop_data' payload
+    https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
+    """
+    hop_data = b""
+    hop_data += struct.pack(be_u64, short_channel_id)
+    hop_data += struct.pack(be_u64, amt_to_forward)
+    hop_data += struct.pack(be_u32, outgoing_cltv_value)
+    hop_data += b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    logger.debug(f"Hop data created...\n{hop_data.hex()}")
+    return hop_data.hex()
 
 
 def deserialize_type(msg_type: bytes) -> int:
