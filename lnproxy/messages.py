@@ -64,15 +64,18 @@ def decode_hop_data(hop_data: hex):
 
 
 def encode_hop_data(
-    short_channel_id: str, amt_to_forward: int, outgoing_cltv_value: int
+    short_channel_id: hex, amt_to_forward: int, outgoing_cltv_value: int
 ) -> hex:
     """Encode a legacy 'hop_data' payload
     https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
     """
-    hop_data = b""
+    # Bolt #7: The hop_data format is identified by a single 0x00-byte length, for
+    # backward compatibility.
+    hop_data = b"\x00"
     hop_data += struct.pack(be_u64, short_channel_id)
     hop_data += struct.pack(be_u64, amt_to_forward)
     hop_data += struct.pack(be_u32, outgoing_cltv_value)
+    # [12*byte:padding]
     hop_data += b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     logger.debug(f"Hop data created...\n{hop_data.hex()}")
     return hop_data.hex()
@@ -114,11 +117,14 @@ def parse_update_add_htlc(msg_payload: bytes, direction: str) -> bytes:
         subprocess.run([LN_CLI, L2_DIR, "getinfo"], capture_output=True).stdout.decode()
     )["id"]
 
+    final_chan_id = 0x0000000000000000
+    hop_data = encode_hop_data(final_chan_id, amount_msat, 132)
+
     gen_onion = subprocess.run(
         [
             ONION_TOOL,
             "generate",
-            f"{my_node_pubkey}",
+            f"{my_node_pubkey}/{hop_data}",
             "--assoc-data",
             f"{payment_hash.hex()}",
         ],

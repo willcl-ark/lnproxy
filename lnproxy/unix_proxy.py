@@ -11,7 +11,6 @@ logger = logging.getLogger("{:<5}".format("PROXY"))
 
 SRV_SOCK = "/tmp/unix_proxy"
 CLIENT_SOCK = "/tmp/l2-regtest/unix_socket"
-# RECV_BUF = 210
 MAX_PKT_LEN = 65569
 MSG_LEN = 2
 MSG_LEN_MAC = 16
