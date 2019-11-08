@@ -3,7 +3,7 @@ import logging
 import struct
 import subprocess
 
-from msg_types import MSG_TYPES
+from lightning_msg_types import MSG_TYPES
 
 """
 byte: an 8-bit byte
@@ -33,6 +33,8 @@ uint8(x)                if x < 0xfd
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("{:<5}".format("MSG"))
+htlc_logger = logging.getLogger("{:<5}".format("HTLC"))
+onion_logger = logging.getLogger("{:<5}".format("ONION"))
 
 # BigSize struct formatting codes
 be_u8 = ">B"
@@ -60,7 +62,7 @@ def decode_hop_data(hop_data: hex):
     amt_to_forward = struct.unpack_from(be_u64, hop_data, 8)[0]
     outgoing_cltv_value = struct.unpack_from(be_u32, hop_data, 16)[0]
     padding = struct.unpack_from(">12B", hop_data, 20)[0]
-    logger.debug(
+    onion_logger.debug(
         f"short_channel_id: {short_channel_id}\n"
         f"amt_to_forward: {amt_to_forward}\n"
         f"outgoing_cltv_value: {outgoing_cltv_value}\n"
@@ -83,7 +85,7 @@ def encode_hop_data(
     hop_data += struct.pack(be_u32, outgoing_cltv_value)
     # [12*byte:padding]
     hop_data += b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    logger.debug(f"Encoded hop data:\n{hop_data.hex()}")
+    onion_logger.debug(f"Encoded hop data:\n{hop_data.hex()}")
     return hop_data.hex()
 
 
@@ -97,13 +99,12 @@ def generate_new_onion(node_pubkey: hex, amount_msat: int, payment_hash: hex) ->
     final_chan_id = 0x0000000000000000
     hop_data = encode_hop_data(final_chan_id, amount_msat, 132)
 
-    logger.debug("Generating new onion using:")
-    logger.debug(
-        f"devtools/onion generate {node_pubkey}/{hop_data} --assoc-data "
-        f"{payment_hash.hex()}"
+    onion_logger.debug(
+        "Generating new onion using: 'devtools/onion generate {node_pubkey}/{hop_data} "
+        "--assoc-data {payment_hash.hex()}'"
     )
 
-    gen_onion = subprocess.run(
+    onion_process = subprocess.run(
         [
             ONION_TOOL,
             "generate",
@@ -112,9 +113,10 @@ def generate_new_onion(node_pubkey: hex, amount_msat: int, payment_hash: hex) ->
             f"{payment_hash.hex()}",
         ],
         capture_output=True,
-    ).stdout.decode()
+    )
+    gen_onion = onion_process.stdout.decode()
     gen_onion_bytes = bytes.fromhex(gen_onion)
-    logger.debug(f"Generated onion! Size: {len(gen_onion_bytes)}")
+    onion_logger.debug(f"Generated onion! Size: {len(gen_onion_bytes)}")
     return gen_onion_bytes
 
 
@@ -122,7 +124,7 @@ def parse_update_add_htlc(orig_payload: bytes) -> bytes:
     """Parse an update_add_htlc
     """
     if len(orig_payload) != 1450:
-        logger.debug(
+        htlc_logger.debug(
             ValueError(
                 f"update_add_htlc body length mismatch: 1450 != {len(orig_payload)}"
             )
@@ -135,12 +137,12 @@ def parse_update_add_htlc(orig_payload: bytes) -> bytes:
     cltv_expiry = struct.unpack(be_u32, orig_payload[80:84])[0]
     onion = struct.unpack(le_onion, orig_payload[84:1450])[0]
 
-    logger.debug(f"Channel_id: {channel_id.hex()}")
-    logger.debug(f"ID: {_id}")
-    logger.debug(f"Amount msat: {amount_msat}")
-    logger.debug(f"Payment Hash: {payment_hash.hex()}")
-    logger.debug(f"CLTV expiry: {cltv_expiry}")
-    logger.debug(f"Onion length: {len(onion)}")
+    htlc_logger.debug(f"Channel_id: {channel_id.hex()}")
+    htlc_logger.debug(f"ID: {_id}")
+    htlc_logger.debug(f"Amount msat: {amount_msat}")
+    htlc_logger.debug(f"Payment Hash: {payment_hash.hex()}")
+    htlc_logger.debug(f"CLTV expiry: {cltv_expiry}")
+    htlc_logger.debug(f"Onion length: {len(onion)}")
 
     generated_onion = generate_new_onion(RECV_NODE_PUBKEY, amount_msat, payment_hash)
 
@@ -158,14 +160,14 @@ def parse_message(msg: bytes, direction: str) -> bytes:
 
     # check the message type
     msg_code = deserialize_type(msg_type)
-    logger.debug(
-        "{:>8} | type: {:^3d} | len: {:>4d}B".format(
-            direction, msg_code, len(msg_payload)
+    # only print messages once as we share a single proxy for testing
+    if direction == "Outbound":
+        logger.debug(
+            "{:26s} | {:>4d}B".format(MSG_TYPES.get(msg_code), len(msg_payload))
         )
-    )
 
     # handle htlc_updates receiver
     if msg_code == ADD_UPDATE_HTLC and direction == "Outbound":
-        return msg_type + parse_update_add_htlc(msg_payload, direction)
+        return msg_type + parse_update_add_htlc(msg_payload)
 
     return msg_type + msg_payload
