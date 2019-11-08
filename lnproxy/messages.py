@@ -44,14 +44,21 @@ be_u64 = ">Q"
 le_32b = "<32s"
 le_onion = "<1366s"
 
+#####################################
 # TODO: Hardcodes to get rid of later
 LN_CLI = "/Users/will/src/lightning/cli/lightning-cli"
 L2_DIR = "--lightning-dir=/tmp/l2-regtest"
 ONION_TOOL = "/Users/will/src/lightning/devtools/onion"
 ADD_UPDATE_HTLC = 128
-RECV_NODE_PUBKEY = json.loads(
-    subprocess.run([LN_CLI, L2_DIR, "getinfo"], capture_output=True).stdout.decode()
-)["id"]
+
+
+def get_recv_pk():
+    return json.loads(
+        subprocess.run([LN_CLI, L2_DIR, "getinfo"], capture_output=True).stdout.decode()
+    )["id"]
+
+
+#####################################
 
 
 def decode_hop_data(hop_data: hex):
@@ -120,16 +127,10 @@ def generate_new_onion(node_pubkey: hex, amount_msat: int, payment_hash: hex) ->
     return gen_onion_bytes
 
 
-def parse_update_add_htlc(orig_payload: bytes) -> bytes:
+def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     """Parse an update_add_htlc
     """
-    if len(orig_payload) != 1450:
-        htlc_logger.debug(
-            ValueError(
-                f"update_add_htlc body length mismatch: 1450 != {len(orig_payload)}"
-            )
-        )
-
+    # decode the htlc
     channel_id = struct.unpack(le_32b, orig_payload[0:32])[0]
     _id = struct.unpack(be_u64, orig_payload[32:40])[0]
     amount_msat = struct.unpack(be_u64, orig_payload[40:48])[0]
@@ -144,12 +145,18 @@ def parse_update_add_htlc(orig_payload: bytes) -> bytes:
     htlc_logger.debug(f"CLTV expiry: {cltv_expiry}")
     htlc_logger.debug(f"Onion length: {len(onion)}")
 
-    generated_onion = generate_new_onion(RECV_NODE_PUBKEY, amount_msat, payment_hash)
+    # when sending out over the wire
+    if direction == "Inbound":
+        # chop off the onion
+        return orig_payload[0:84]
 
-    modified_payload = orig_payload[0:84]
-    modified_payload += struct.pack(le_onion, generated_onion)
-
-    return modified_payload
+    # when receiving from the wire
+    if direction == "Outbound":
+        # generate a new onion
+        generated_onion = generate_new_onion(get_recv_pk(), amount_msat, payment_hash)
+        modified_payload = orig_payload[0:84]
+        modified_payload += struct.pack(le_onion, generated_onion)
+        return modified_payload
 
 
 def parse_message(msg: bytes, direction: str) -> bytes:
@@ -167,7 +174,7 @@ def parse_message(msg: bytes, direction: str) -> bytes:
         )
 
     # handle htlc_updates receiver
-    if msg_code == ADD_UPDATE_HTLC and direction == "Outbound":
-        return msg_type + parse_update_add_htlc(msg_payload)
+    if msg_code == ADD_UPDATE_HTLC:
+        return msg_type + parse_update_add_htlc(msg_payload, direction)
 
     return msg_type + msg_payload
