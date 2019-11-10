@@ -15,7 +15,7 @@ from lightning import LightningRpc
 nodes = ["1", "2", "3"]
 
 
-def print_privkeys(node):
+def print_privkeys(_node):
     # first thing: read the $LIGHTNING_DIR/hsm_secret
     # xxd -p ~/.lightning/hsm_secret | tr -d '\n' && echo ""
 
@@ -31,7 +31,7 @@ def print_privkeys(node):
         # or read it directly
 
         # hsm_secret = open(expanduser("~/.lightning/hsm_secret"), "rb").read()
-        hsm_secret = open(f"/tmp/l{node}-regtest/hsm_secret", "rb").read()
+        hsm_secret = open(f"/tmp/l{_node}-regtest/hsm_secret", "rb").read()
 
     # to generate the node private key, you must apply this hkdf thing
     # (which is a special way to an hmac) to id
@@ -65,7 +65,7 @@ def print_privkeys(node):
     # from the private key obtained here against the public key your node is advertising
     # to everybody.
 
-    ln = LightningRpc(f"/tmp/l{node}-regtest/lightning-rpc")
+    ln = LightningRpc(f"/tmp/l{_node}-regtest/lightning-rpc")
     # ln = LightningRpc(expanduser("~/.lightning/lightning-rpc"))
 
     i = 0
@@ -79,7 +79,7 @@ def print_privkeys(node):
                 break
         except:
             i += 1
-    print(f"Node l{node} privkey: {key.hex()}")
+    print(f"Node l{_node} privkey: {key.hex()}")
 
 
 if __name__ == "__main__":

@@ -4,10 +4,10 @@ import struct
 
 import trio
 
-import messages
+import ln_msg
 
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("{:<5}".format("PROXY"))
+logger = logging.getLogger(f"{'PROXY':<5}")
 
 SRV_SOCK = "/tmp/unix_proxy"
 CLIENT_SOCK = "/tmp/l2-regtest/unix_socket"
@@ -67,7 +67,7 @@ async def proxy(read_stream, write_stream, direction):
                 body = await read_stream.receive_some(body_len)
 
                 # parse the message
-                body = messages.parse_message(body, direction)
+                body = ln_msg.parse(body, direction)
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await read_stream.receive_some(MSG_MAC)
@@ -94,7 +94,7 @@ async def socket_handler(server_stream):
         async with trio.open_nursery() as nursery:
             logger.debug(f"Starting proxy")
             nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
-            nursery.start_soon(proxy, client_stream, server_stream, "Inbound ")
+            nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
     except Exception as exc:
         print(f"socket_handler: crashed: {exc}")
     finally:
