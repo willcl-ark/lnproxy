@@ -8,7 +8,7 @@ import config
 logger = logging.getLogger(f"{'UTIL':<5}")
 
 
-def get_l2_pubkey():
+def get_l2_pubkey() -> str:
     return json.loads(
         subprocess.run(
             [config.LN_CLI, config.L2_DIR, "getinfo"], capture_output=True
@@ -16,7 +16,7 @@ def get_l2_pubkey():
     )["id"]
 
 
-def get_l3_pubkey():
+def get_l3_pubkey() -> str:
     return json.loads(
         subprocess.run(
             [config.LN_CLI, config.L3_DIR, "getinfo"], capture_output=True
@@ -24,7 +24,7 @@ def get_l3_pubkey():
     )["id"]
 
 
-def get_next_channel_id():
+def get_next_channel_id() -> bytes:
     """Get the final short channel_ID from CLI. Pack it into correct byte structure
     """
     block_height = tx_index = output_index = ""
@@ -33,8 +33,9 @@ def get_next_channel_id():
             [config.LN_CLI, config.L2_DIR, "listfunds"], capture_output=True
         ).stdout.decode()
     )["channels"]
+    l3_pubkey = get_l3_pubkey()
     for channel in l2_channels:
-        if channel["peer_id"] == get_l3_pubkey():
+        if channel["peer_id"] == l3_pubkey:
             block_height, tx_index, output_index = channel["short_channel_id"].split(
                 "x"
             )
@@ -44,11 +45,12 @@ def get_next_channel_id():
     block_height = int(block_height)
     tx_index = int(tx_index)
     output_index = int(output_index)
+    logger.debug(f"Got short channel ID: {block_height}x{tx_index}x{output_index}")
 
     _id = b""
     # 3 bytes for block height and tx_index
-    _id += struct.pack(">L", block_height)[-3:]
-    _id += struct.pack(">L", tx_index)[-3:]
+    _id += struct.pack(config.be_u32, block_height)[-3:]
+    _id += struct.pack(config.be_u32, tx_index)[-3:]
     _id += struct.pack(config.be_u16, output_index)
     return _id
 

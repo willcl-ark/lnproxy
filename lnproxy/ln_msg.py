@@ -66,25 +66,37 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     htlc_logger.debug(f"onion length: {len(_onion)}")
     htlc_logger.debug(f"onion hex:\n{_onion.hex()}")
 
-    # when sending out over the wire
+    # with open("/Users/will/src/lnproxy/onion.dat", "w") as f:
+    #     f.write(_onion.hex())
+    #
+    # priv_keys = []
+    # import extract_private_key_from_hsm_secret
+    #
+    # for node in extract_private_key_from_hsm_secret.nodes:
+    #     priv_keys.append(extract_private_key_from_hsm_secret.get_privkey(node))
+    # onion.decode_onion(
+    #     "/Users/will/src/lnproxy/onion.dat", priv_keys[1:], payment_hash.hex()
+    # )
+
+    # from local lightning node
     if direction == "Inbound":
         # chop off the onion
-        # TODO: return orig_payload[0:84]!
-        # return orig_payload[0:84]
-        return orig_payload
+        return orig_payload[0:84]
 
-    # when receiving from the wire
+    # from external lightning node
     if direction == "Outbound":
         # generate a new onion
         generated_onion = onion.generate_new(
-            util.get_l2_pubkey(), util.get_l3_pubkey(), amount_msat, payment_hash
+            util.get_l2_pubkey(),
+            util.get_l3_pubkey(),
+            amount_msat,
+            payment_hash,
+            cltv_expiry - 6,
         )
         modified_payload = orig_payload[0:84]
         # add the new onion
         modified_payload += struct.pack(config.le_onion, generated_onion)
-        # TODO: return modified payload!
-        # return modified_payload
-        return orig_payload
+        return modified_payload
 
 
 def parse(msg: bytes, direction: str) -> bytes:

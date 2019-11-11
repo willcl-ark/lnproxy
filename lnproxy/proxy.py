@@ -43,7 +43,7 @@ async def proxy(read_stream, write_stream, direction):
 
                 # during handshake pass full 50 / 66 B messages transparently for now
                 # TODO: mock these!
-                logger.debug(f"{direction} handshake message {i + 1}")
+                logger.debug(f"{direction:9s} | handshake message {i + 1}")
                 message = await read_stream.receive_some(MAX_PKT_LEN)
 
             else:
@@ -93,7 +93,9 @@ async def socket_handler(server_stream):
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
             logger.debug(f"Starting proxy")
+            # remote lightning node
             nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
+            # local lightning node
             nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
     except Exception as exc:
         print(f"socket_handler: crashed: {exc}")
