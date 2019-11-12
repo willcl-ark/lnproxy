@@ -25,10 +25,10 @@ def decode_hop_data(hop_data: bytes):
     padding = struct.unpack_from("12B", hop_data, 20 + off)[0]
     onion_logger.debug(
         "Decoded payload:\n"
-        f"Short channel id: {short_channel_id}\n"
-        f"Amt to forward: {amt_to_forward}\n"
-        f"Outgoing CLTV value: {outgoing_cltv_value}\n"
-        f"Padding: {padding}"
+        f"\tShort channel id: {short_channel_id}\n"
+        f"\tAmt to forward: {amt_to_forward}\n"
+        f"\tOutgoing CLTV value: {outgoing_cltv_value}\n"
+        f"\tPadding: {padding}"
     )
 
 
@@ -46,7 +46,6 @@ def encode_hop_data(
     hop_data += struct.pack(config.be_u32, outgoing_cltv_value)
     # [12*byte:padding]
     hop_data += b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-    onion_logger.debug(f"Hop data:\n{hop_data}")
     return hop_data
 
 
@@ -61,6 +60,7 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
     """Takes an ordered list of private keys, an onion and assoc-data (usually payment
     hash) and decodes an onion
     """
+    onion_logger.debug("Decoding onion...")
     for priv_key in priv_keys:
         _next = ""
         onion_tool = subprocess.run(
@@ -112,7 +112,7 @@ def generate_new(
     final_hop_data = encode_hop_data(final_chan_id, amount_msat, cltv_expiry).hex()
 
     onion_logger.debug(
-        f"Generating new onion using: 'devtools/onion generate "
+        f"Generating new onion using command:\n'devtools/onion generate "
         f"{our_pubkey}/{next_hop_data} {final_pubkey}/{final_hop_data} --assoc-data "
         f"{payment_hash.hex()}'"
     )
@@ -132,7 +132,6 @@ def generate_new(
     if onion_tool.stdout == b"":
         onion_logger.error(f"Error from onion tool: {onion_tool.stdout.decode()}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
-    onion_logger.debug(
-        f"Generated onion. Length: {len(gen_onion_bytes)}\n" f"Onion:\n{gen_onion}"
-    )
+    onion_logger.debug("Generated onion!")
+
     return gen_onion_bytes

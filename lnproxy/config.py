@@ -25,18 +25,20 @@ uint8(x)                if x < 0xfd
 """
 
 # BigSize struct formatting codes
-be_u8 = ">B"
-be_u16 = ">H"
-be_u32 = ">I"
-be_u64 = ">Q"
-le_32b = "<32s"
-le_onion = "<1366s"
+be_u8: str = ">B"
+be_u16: str = ">H"
+be_u32: str = ">I"
+be_u64: str = ">Q"
+le_32b: str = "<32s"
+le_onion: str = "<1366s"
 
 #####################################
 # TODO: Hardcodes to get rid of later
-LN_CLI = "/Users/will/src/lightning/cli/lightning-cli"
-L2_DIR = "--lightning-dir=/tmp/l2-regtest"
-L3_DIR = "--lightning-dir=/tmp/l3-regtest"
-ONION_TOOL = "/Users/will/src/lightning/devtools/onion"
-ADD_UPDATE_HTLC = 128
+LN_CLI: str = "/Users/will/src/lightning/cli/lightning-cli"
+L2_DIR: str = "--lightning-dir=/tmp/l2-regtest"
+L3_DIR: str = "--lightning-dir=/tmp/l3-regtest"
+ONION_TOOL: str = "/Users/will/src/lightning/devtools/onion"
+onion_temp_file: str = "/Users/will/src/lnproxy/onion.dat"
+ADD_UPDATE_HTLC: int = 128
+C_FEE: int = 11
 #####################################

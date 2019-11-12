@@ -63,33 +63,24 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     htlc_logger.debug(f"amount_msat: {amount_msat}")
     htlc_logger.debug(f"payment_hash: {payment_hash.hex()}")
     htlc_logger.debug(f"cltv_expiry: {cltv_expiry}")
-    htlc_logger.debug(f"onion length: {len(_onion)}")
-    htlc_logger.debug(f"onion hex:\n{_onion.hex()}")
-
-    # with open("/Users/will/src/lnproxy/onion.dat", "w") as f:
-    #     f.write(_onion.hex())
-    #
-    # priv_keys = []
-    # import extract_private_key_from_hsm_secret
-    #
-    # for node in extract_private_key_from_hsm_secret.nodes:
-    #     priv_keys.append(extract_private_key_from_hsm_secret.get_privkey(node))
-    # onion.decode_onion(
-    #     "/Users/will/src/lnproxy/onion.dat", priv_keys[1:], payment_hash.hex()
-    # )
+    logger.debug(f"original onion length: {len(_onion)}")
 
     # from local lightning node
-    if direction == "Inbound":
+    # TODO: This is not being called on the way in!
+    if direction == "from_local":
         # chop off the onion
+        logger.debug("Chopping off the onion before transmission")
         return orig_payload[0:84]
 
     # from external lightning node
-    if direction == "Outbound":
+    if direction == "to_remote":
         # generate a new onion
+        logger.debug("Generating new onion")
         generated_onion = onion.generate_new(
             util.get_l2_pubkey(),
             util.get_l3_pubkey(),
-            amount_msat,
+            # TODO: remove config.C_FEE
+            amount_msat - config.C_FEE,
             payment_hash,
             cltv_expiry - 6,
         )
@@ -107,12 +98,11 @@ def parse(msg: bytes, direction: str) -> bytes:
 
     # check the message type
     msg_code = deserialize_type(msg_type)
-    # only print messages once, as we share a single proxy for testing
-    # 'Inbound' == l1 in tests
-    if direction == "Inbound":
-        logger.debug(f"{codes.get(msg_code):26s} | {len(msg_payload):>4d}B")
+    logger.debug(
+        f"{direction:<10s} | {codes.get(msg_code):<26s} | {len(msg_payload):>4d}B"
+    )
 
-    # handle htlc_updates receiver
+    # handle htlc_updates
     if msg_code == config.ADD_UPDATE_HTLC:
         return msg_type + parse_update_add_htlc(msg_payload, direction)
 

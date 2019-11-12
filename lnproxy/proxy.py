@@ -34,7 +34,7 @@ async def proxy(read_stream, write_stream, direction):
     """
 
     # Bolt #8: The handshake proceeds in three acts, taking 1.5 round trips.
-    handshake_acts = 2 if direction == "Outbound" else 1
+    handshake_acts = 2 if direction == "to_remote" else 1
     i = 0
 
     while True:
@@ -43,7 +43,7 @@ async def proxy(read_stream, write_stream, direction):
 
                 # during handshake pass full 50 / 66 B messages transparently for now
                 # TODO: mock these!
-                logger.debug(f"{direction:9s} | handshake message {i + 1}")
+                logger.debug(f"{direction:<10s} | handshake message {i + 1}")
                 message = await read_stream.receive_some(MAX_PKT_LEN)
 
             else:
@@ -94,9 +94,9 @@ async def socket_handler(server_stream):
         async with trio.open_nursery() as nursery:
             logger.debug(f"Starting proxy")
             # remote lightning node
-            nursery.start_soon(proxy, server_stream, client_stream, "Outbound")
+            nursery.start_soon(proxy, server_stream, client_stream, "to_remote")
             # local lightning node
-            nursery.start_soon(proxy, client_stream, server_stream, "Inbound")
+            nursery.start_soon(proxy, client_stream, server_stream, "from_local")
     except Exception as exc:
         print(f"socket_handler: crashed: {exc}")
     finally:
