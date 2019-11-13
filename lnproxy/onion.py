@@ -8,11 +8,10 @@ import util
 
 
 logging.basicConfig(level=logging.DEBUG)
-onion_logger = logging.getLogger(f"{'ONION':<5}")
-logging.getLogger("root").setLevel(logging.ERROR)
+onion_logger = logging.getLogger(f"{'ONION':<6s}")
 
 
-def decode_hop_data(hop_data: bytes):
+def decode_hop_data(hop_data: bytes, layer=0):
     """Decode a legacy 'hop_data' payload
     https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
     """
@@ -24,12 +23,13 @@ def decode_hop_data(hop_data: bytes):
     outgoing_cltv_value = struct.unpack_from(config.be_u32, hop_data, 16 + off)[0]
     padding = struct.unpack_from("12B", hop_data, 20 + off)[0]
     onion_logger.debug(
-        "Decoded payload:\n"
+        f"Decoded payload layer {layer}:\n"
         f"\tShort channel id: {short_channel_id}\n"
         f"\tAmt to forward: {amt_to_forward}\n"
         f"\tOutgoing CLTV value: {outgoing_cltv_value}\n"
         f"\tPadding: {padding}"
     )
+    return short_channel_id, amt_to_forward, outgoing_cltv_value, padding
 
 
 def encode_hop_data(
@@ -49,7 +49,7 @@ def encode_hop_data(
     return hop_data
 
 
-def get_privkeys():
+def get_regtest_privkeys():
     keys = []
     for node in extract_private_key_from_hsm_secret.nodes:
         keys.append(extract_private_key_from_hsm_secret.get_privkey(node))
@@ -61,6 +61,9 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
     hash) and decodes an onion
     """
     onion_logger.debug("Decoding onion...")
+    payloads = []
+    nexts = []
+    i = 1
     for priv_key in priv_keys:
         _next = ""
         onion_tool = subprocess.run(
@@ -77,25 +80,31 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
         if not onion_tool.stderr.decode() == "":
             onion_logger.error(f"Decode Error: {onion_tool.stderr.decode()}")
         onion = onion_tool.stdout.decode()
+        # onion_logger.debug(f"Decoded onion: {onion}")
 
         if "next=" not in onion:
-            payload, temp = onion.split("\n")
+            payload = onion.strip()
         else:
             payload, _next, temp = onion.split("\n")
             temp, _next = _next.split("=")
-            onion_logger.debug(f"_next: {_next}")
+            # onion_logger.debug(f"_next: {_next}")
         temp, payload = payload.split("=")
-        onion_logger.debug(f"payload: {payload}")
-        decode_hop_data(bytes.fromhex(payload))
+        # onion_logger.debug(f"payload: {payload}")
+        decode_hop_data(bytes.fromhex(payload), i)
+        payloads.append(payload)
+        nexts.append(_next)
 
         if _next:
             with open(onion_file_path, "w") as f:
                 f.write(_next)
+            i += 1
+    return payloads, nexts
 
 
 def generate_new(
-    our_pubkey: hex,
-    final_pubkey: hex,
+    first_pubkey: hex,
+    next_pubkey: hex,
+    # pubkeys: list,
     amount_msat: int,
     payment_hash: bytes,
     cltv_expiry: int,
@@ -103,35 +112,61 @@ def generate_new(
     """Generates a new onion with our_pubkey as this hop, and next_pubkey as
     'final hop'
     """
+    # # create a hop data for each pubkey
+    # hop_data = []
+    # if len(pubkeys) > 1:
+    #     for pubkey in pubkeys[-1:]:
+    #         hop_data.append(encode_hop_data(util.get_next_channel_id(), amount_msat, cltv_expiry).hex())
+    # zipped = zip(pubkeys, hop_data)
 
-    next_channel_id = util.get_next_channel_id()
-    next_hop_data = encode_hop_data(next_channel_id, amount_msat, cltv_expiry).hex()
-
-    # Bolt #7: MUST NOT include short_channel_id for the final node.
-    final_chan_id = struct.pack(config.be_u64, 0)
-    final_hop_data = encode_hop_data(final_chan_id, amount_msat, cltv_expiry).hex()
-
-    onion_logger.debug(
-        f"Generating new onion using command:\n'devtools/onion generate "
-        f"{our_pubkey}/{next_hop_data} {final_pubkey}/{final_hop_data} --assoc-data "
-        f"{payment_hash.hex()}'"
-    )
-
-    onion_tool = subprocess.run(
-        [
-            config.ONION_TOOL,
-            "generate",
-            f"{our_pubkey}/{next_hop_data}",
-            f"{final_pubkey}/{final_hop_data}",
-            "--assoc-data",
-            f"{payment_hash.hex()}",
-        ],
-        capture_output=True,
-    )
+    # is there is a next_pubkey, we are't the final hop, so add a second_hop!
+    if next_pubkey:
+        first_hop_id = util.get_next_channel_id()
+        first_hop_data = encode_hop_data(first_hop_id, amount_msat, cltv_expiry).hex()
+        # Bolt #7: MUST NOT include short_channel_id for the final node.
+        next_hop_id = struct.pack(config.be_u64, 0)
+        next_hop_data = encode_hop_data(next_hop_id, amount_msat, cltv_expiry).hex()
+        onion_logger.debug(
+            f"Generating new onion using command:\n'devtools/onion generate "
+            f"{first_pubkey}/{first_hop_data} {next_pubkey}/{next_hop_data} --assoc-data "
+            f"{payment_hash.hex()}'"
+        )
+        onion_tool = subprocess.run(
+            [
+                config.ONION_TOOL,
+                "generate",
+                f"{first_pubkey}/{first_hop_data}",
+                f"{next_pubkey}/{next_hop_data}",
+                "--assoc-data",
+                f"{payment_hash.hex()}",
+            ],
+            capture_output=True,
+        )
+    # else we are the final hop!
+    else:
+        # Bolt #7: MUST NOT include short_channel_id for the final node.
+        first_hop_id = struct.pack(config.be_u64, 0)
+        first_hop_data = encode_hop_data(first_hop_id, amount_msat, cltv_expiry).hex()
+        onion_logger.debug(
+            f"Generating new onion using command:\n'devtools/onion generate "
+            f"{first_pubkey}/{first_hop_data} --assoc-data "
+            f"{payment_hash.hex()}'"
+        )
+        onion_tool = subprocess.run(
+            [
+                config.ONION_TOOL,
+                "generate",
+                f"{first_pubkey}/{first_hop_data}",
+                "--assoc-data",
+                f"{payment_hash.hex()}",
+            ],
+            capture_output=True,
+        )
     gen_onion = onion_tool.stdout.decode()
+
     if onion_tool.stdout == b"":
         onion_logger.error(f"Error from onion tool: {onion_tool.stdout.decode()}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
     onion_logger.debug("Generated onion!")
-
+    onion_logger.debug(f"Onion hex:\n{gen_onion_bytes.hex()}")
     return gen_onion_bytes

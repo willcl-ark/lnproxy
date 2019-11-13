@@ -1,86 +1,55 @@
 """
-Borrowed from fiatjaf's gist:
+Reworked from fiatjaf's gist:
 https://gist.github.com/fiatjaf/e3232bef6d59263b439b97b6d04d1bcc
 """
 
-# extracting the node's private key from the hsm_secret file
+# derive node private key from the hsm_secret
 import hashlib
-import sys
 
 import secp256k1
 from hkdf import Hkdf
 from lightning import LightningRpc
 
+import config
 
-nodes = ["1", "2", "3"]
+nodes = [0, 1, 2]
 
 
 def get_privkey(_node):
-    # first thing: read the $LIGHTNING_DIR/hsm_secret
-    # xxd -p ~/.lightning/hsm_secret | tr -d '\n' && echo ""
+    ln_dir = config.NODE_DIR[_node]
+    hsm_secret = open(f"{ln_dir}/hsm_secret", "rb").read()
 
-    hex_value = "" or sys.argv[-1]
-
-    # if you have it hex-encoded (as given from the xxd line above)
-    if hex_value and len(hex_value) > 60:
-        # proceed to make it a binary string again
-        from binascii import unhexlify
-
-        hsm_secret = unhexlify(hex_value)
-    else:
-        # or read it directly
-
-        # hsm_secret = open(expanduser("~/.lightning/hsm_secret"), "rb").read()
-        hsm_secret = open(f"/tmp/l{_node}-regtest/hsm_secret", "rb").read()
-
-    # to generate the node private key, you must apply this hkdf thing
-    # (which is a special way to an hmac) to id
-
+    # To generate the node private key, apply hkdf to string b"nodeid"
     salt = bytes([0]) or b"\x00"
     key = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b"nodeid")
-    # print(key.hex())
-    # we're done here.
-    return key.hex()
 
-    # # however, in the c-lightning code they say there's a ridiculously small chance of the
-    # # key produced here not being valid to the secp256k1 parameters, so they test it
-    # # and increase the salt until it is valid.
-    #
-    # # if for some reason your key is not correct with salt 0 you can just increase it by 1
-    # # and be fine (in the majority of cases you can just use salt 0 and be fine)
-    #
-    # # how to test? I don't know, maybe secp256k1 will raise an exception if the key is wrong?
-    #
-    # i = 0
-    # while True:
-    #     salt = bytes([i])
-    #     key = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b"nodeid")
-    #     try:
-    #         secp256k1.PrivateKey(key)
-    #         break
-    #     except:
-    #         i += 1
-    # # print(key.hex())
-    #
-    # # maybe you want to be extra-sure. in that case you can check the public key generated
-    # # from the private key obtained here against the public key your node is advertising
-    # # to everybody.
-    #
-    # ln = LightningRpc(f"/tmp/l{_node}-regtest/lightning-rpc")
-    # # ln = LightningRpc(expanduser("~/.lightning/lightning-rpc"))
-    #
-    # i = 0
-    # while True:
-    #     salt = bytes([i])
-    #     key = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b"nodeid")
-    #     try:
-    #         privkey = secp256k1.PrivateKey(key)
-    #         if privkey.pubkey.serialize().hex() == ln.getinfo()["id"]:
-    #             # success!
-    #             break
-    #     except:
-    #         i += 1
-    # return key.hex()
+    # Small chance of the key produced not being valid to secp256k1 parameters, so test
+    # and increase the salt until it is valid.
+    # Maybe secp256k1 will raise an exception if the key is wrong?
+    i = 0
+    privkey = b""
+    while True and i < 1000:
+        if i == 999:
+            print("No valid secp256k1 key found for hsm secret after 1000 salts")
+            return False
+        try:
+            privkey = secp256k1.PrivateKey(key)
+            # valid key
+            break
+        except:
+            # invalid key?
+            i += 1
+        salt = bytes([i])
+        key = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b"nodeid")
+
+    # Check public key derived from the private key against node id
+    ln = LightningRpc(f"{ln_dir}/lightning-rpc")
+    if not privkey.pubkey.serialize().hex() == ln.getinfo()["id"]:
+        print(
+            f"Warning, valid secp265k1 derived pubkey doesn't appear to match "
+            f"lightning node id"
+        )
+    return key.hex()
 
 
 if __name__ == "__main__":

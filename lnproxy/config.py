@@ -24,6 +24,8 @@ uint8(x)                if x < 0xfd
 
 """
 
+import logging
+
 # BigSize struct formatting codes
 be_u8: str = ">B"
 be_u16: str = ">H"
@@ -32,13 +34,31 @@ be_u64: str = ">Q"
 le_32b: str = "<32s"
 le_onion: str = "<1366s"
 
+
+log_format = logging.basicConfig(
+    level=logging.DEBUG, format="%(name)6s | %(levelname)7s | %(message)s"
+)
+
+
 #####################################
 # TODO: Hardcodes to get rid of later
 LN_CLI: str = "/Users/will/src/lightning/cli/lightning-cli"
-L2_DIR: str = "--lightning-dir=/tmp/l2-regtest"
-L3_DIR: str = "--lightning-dir=/tmp/l3-regtest"
+NODE_DIR = {
+    0: "/tmp/l1-regtest",
+    1: "/tmp/l2-regtest",
+    2: "/tmp/l3-regtest",
+}
 ONION_TOOL: str = "/Users/will/src/lightning/devtools/onion"
 onion_temp_file: str = "/Users/will/src/lnproxy/onion.dat"
 ADD_UPDATE_HTLC: int = 128
 C_FEE: int = 11
+CLTV_d: int = 6
+my_node: int = 0
+my_node_dir: str = ""
+my_node_pubkey: str = ""
+next_node_pubkey: str = ""
+remote_listen_SOCK: str = ""
+local_listen_SOCK: str = ""
+local_node_addr: str = ""
+remote_node_addr: str = ""
 #####################################

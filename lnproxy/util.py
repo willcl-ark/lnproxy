@@ -1,46 +1,50 @@
-import json
 import logging
 import struct
-import subprocess
+
+from lightning import LightningRpc
 
 import config
 
-logger = logging.getLogger(f"{'UTIL':<5}")
+logger = logging.getLogger(f"{'UTIL':<6s}")
+rpc = None
 
 
-def get_l2_pubkey() -> str:
-    return json.loads(
-        subprocess.run(
-            [config.LN_CLI, config.L2_DIR, "getinfo"], capture_output=True
-        ).stdout.decode()
-    )["id"]
+def init_nodes():
+    global rpc
+    config.my_node_dir = config.NODE_DIR[config.my_node]
+    rpc = LightningRpc(f"{config.my_node_dir}/lightning-rpc")
+    rpc.logger = logging.getLogger(f"{'LNRPC':<6s}")
+    rpc.logger.setLevel(logging.ERROR)
+    # TODO: remove when not testing
+    config.my_node_pubkey = rpc.getinfo()["id"]
+    next_node_dir = config.NODE_DIR[(config.my_node + 1) % 3]
+    rpc2 = LightningRpc(f"{next_node_dir}/lightning-rpc")
+    config.next_node_pubkey = rpc2.getinfo()["id"]
 
 
-def get_l3_pubkey() -> str:
-    return json.loads(
-        subprocess.run(
-            [config.LN_CLI, config.L3_DIR, "getinfo"], capture_output=True
-        ).stdout.decode()
-    )["id"]
+def get_my_payment_hashes() -> list:
+    all_invoices = rpc.listinvoices()["invoices"]
+    inv_hashes = []
+    for invoice in all_invoices:
+        inv_hashes.append(invoice["payment_hash"])
+    return inv_hashes
 
 
 def get_next_channel_id() -> bytes:
-    """Get the final short channel_ID from CLI. Pack it into correct byte structure
+    """Get the next short channel_ID from CLI. Pack it into correct byte structure
     """
     block_height = tx_index = output_index = ""
-    l2_channels = json.loads(
-        subprocess.run(
-            [config.LN_CLI, config.L2_DIR, "listfunds"], capture_output=True
-        ).stdout.decode()
-    )["channels"]
-    l3_pubkey = get_l3_pubkey()
-    for channel in l2_channels:
-        if channel["peer_id"] == l3_pubkey:
+    # get a list of my channels
+    my_channels = rpc.listfunds()["channels"]
+    for channel in my_channels:
+        if channel["peer_id"] == config.next_node_pubkey:
             block_height, tx_index, output_index = channel["short_channel_id"].split(
                 "x"
             )
     if not block_height and tx_index and output_index:
-        return False
+        raise ValueError(
+            f"Could not find block_height, tx_index and output_index in " f"channels"
+        )
 
     block_height = int(block_height)
     tx_index = int(tx_index)
@@ -55,8 +59,34 @@ def get_next_channel_id() -> bytes:
     return _id
 
 
-def hexdump(data, length=16):
-    """Print a hexdump of data
+def set_socks(node):
+    """Test code which will set sockets for as appropriate for a 3-node test
+    """
+    if node not in range(0, 3):
+        raise ValueError(f"Node arg passed ({node}) not in range 1 to 3")
+    if node == 0:
+        config.remote_listen_SOCK = "/tmp/unix_proxy1_remotes"
+        config.local_listen_SOCK = "/tmp/unix_proxy1_local"
+        config.local_node_addr = "/tmp/l1-regtest/unix_socket"
+        config.remote_node_addr = "/tmp/l2-regtest/unix_socket"
+    elif node == 1:
+        config.remote_listen_SOCK = "/tmp/unix_proxy2_remotes"
+        config.local_listen_SOCK = "/tmp/unix_proxy2_local"
+        config.local_node_addr = "/tmp/l2-regtest/unix_socket"
+        config.remote_node_addr = "/tmp/l3-regtest/unix_socket"
+    elif node == 2:
+        config.remote_listen_SOCK = "/tmp/unix_proxy3_remotes"
+        config.local_listen_SOCK = "/tmp/unix_proxy3_local"
+        config.local_node_addr = "/tmp/l3-regtest/unix_socket"
+        config.remote_node_addr = "/tmp/l1-regtest/unix_socket"
+    logger.debug(f"remote_list_sock = {config.remote_listen_SOCK}")
+    logger.debug(f"local_listen_sock = {config.local_listen_SOCK}")
+    logger.debug(f"local_node_addr = {config.local_node_addr}")
+    logger.debug(f"remote_node_addr = {config.remote_node_addr}")
+
+
+def hex_dump(data, length=16):
+    """Print a hex dump of data
     """
     _filter = "".join([(len(repr(chr(x))) == 3) and chr(x) or "." for x in range(256)])
     lines = []
