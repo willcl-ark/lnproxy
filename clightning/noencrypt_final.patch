@@ -1,0 +1,179 @@
+Index: common/crypto_state.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- common/crypto_state.c	(revision 5bc2de89979ca8eebb7b4b05da122aeb342c6f31)
++++ common/crypto_state.c	(revision 31fedebb4fb61cf5f07b03268dfa67bb0c54047a)
+@@ -3,20 +3,26 @@
+ 
+ void towire_crypto_state(u8 **ptr, const struct crypto_state *cs)
+ {
+-	towire_u64(ptr, cs->rn);
+-	towire_u64(ptr, cs->sn);
+-	towire_secret(ptr, &cs->sk);
+-	towire_secret(ptr, &cs->rk);
+-	towire_secret(ptr, &cs->s_ck);
+-	towire_secret(ptr, &cs->r_ck);
++	towire_bool(ptr, cs->encrypt);
++	if (cs->encrypt) {
++		towire_u64(ptr, cs->rn);
++		towire_u64(ptr, cs->sn);
++		towire_secret(ptr, &cs->sk);
++		towire_secret(ptr, &cs->rk);
++		towire_secret(ptr, &cs->s_ck);
++		towire_secret(ptr, &cs->r_ck);
++	}
+ }
+ 
+ void fromwire_crypto_state(const u8 **ptr, size_t *max, struct crypto_state *cs)
+ {
+-	cs->rn = fromwire_u64(ptr, max);
+-	cs->sn = fromwire_u64(ptr, max);
+-	fromwire_secret(ptr, max, &cs->sk);
+-	fromwire_secret(ptr, max, &cs->rk);
+-	fromwire_secret(ptr, max, &cs->s_ck);
+-	fromwire_secret(ptr, max, &cs->r_ck);
++	cs->encrypt = fromwire_bool(ptr, max);
++	if (cs->encrypt) {
++		cs->rn = fromwire_u64(ptr, max);
++		cs->sn = fromwire_u64(ptr, max);
++		fromwire_secret(ptr, max, &cs->sk);
++		fromwire_secret(ptr, max, &cs->rk);
++		fromwire_secret(ptr, max, &cs->s_ck);
++		fromwire_secret(ptr, max, &cs->r_ck);
++	}
+ }
+Index: common/crypto_state.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- common/crypto_state.h	(revision 5bc2de89979ca8eebb7b4b05da122aeb342c6f31)
++++ common/crypto_state.h	(revision 31fedebb4fb61cf5f07b03268dfa67bb0c54047a)
+@@ -12,6 +12,9 @@
+ 	struct secret sk, rk;
+ 	/* Chaining key for re-keying */
+ 	struct secret s_ck, r_ck;
++
++	/* Do we want to encrypt? */
++	bool encrypt;
+ };
+ 
+ void towire_crypto_state(u8 **pptr, const struct crypto_state *cs);
+Index: common/cryptomsg.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- common/cryptomsg.c	(revision 5bc2de89979ca8eebb7b4b05da122aeb342c6f31)
++++ common/cryptomsg.c	(revision 31fedebb4fb61cf5f07b03268dfa67bb0c54047a)
+@@ -103,6 +103,11 @@
+ 		return NULL;
+ 	decrypted = tal_arr(ctx, u8, inlen - 16);
+ 
++	if (!cs->encrypt) {
++		memcpy(decrypted, in, inlen - 16);
++		return decrypted;
++	}
++
+ 	le64_nonce(npub, cs->rn++);
+ 
+ 	/* BOLT #8:
+@@ -132,26 +137,30 @@
+ 	unsigned long long mlen;
+ 	be16 len;
+ 
+-	le64_nonce(npub, cs->rn++);
++	if (!cs->encrypt) {
++		memcpy(&len, hdr, sizeof(len));
++	} else {
++
++		le64_nonce(npub, cs->rn++);
+ 
+-	/* BOLT #8:
+-	 *
+-	 *  2. Let the encrypted length prefix be known as `lc`.
+-	 *  3. Decrypt `lc` (using `ChaCha20-Poly1305`, `rn`, and `rk`), to
+-	 *     obtain the size of the encrypted packet `l`.
+-	 *    * A zero-length byte slice is to be passed as the AD
+-	 *	(associated data).
+-	 *    * The nonce `rn` MUST be incremented after this step.
+-	 */
+-	if (crypto_aead_chacha20poly1305_ietf_decrypt((unsigned char *)&len,
+-						      &mlen, NULL,
+-						      memcheck(hdr, 18), 18,
+-						      NULL, 0,
+-						      npub, cs->rk.data) != 0) {
+-		/* FIXME: Report error! */
+-		return false;
+-	}
+-	assert(mlen == sizeof(len));
++		/* BOLT #8:
++		 *
++		 *  2. Let the encrypted length prefix be known as `lc`.
++		 *  3. Decrypt `lc` (using `ChaCha20-Poly1305`, `rn`, and `rk`),
++		 *to obtain the size of the encrypted packet `l`.
++		 *    * A zero-length byte slice is to be passed as the AD
++		 *	(associated data).
++		 *    * The nonce `rn` MUST be incremented after this step.
++		 */
++		if (crypto_aead_chacha20poly1305_ietf_decrypt(
++			(unsigned char *)&len, &mlen, NULL, memcheck(hdr, 18),
++			18, NULL, 0, npub, cs->rk.data) != 0) {
++			/* FIXME: Report error! */
++			return false;
++		}
++		assert(mlen == sizeof(len));
++	}
++
+ 	*lenp = be16_to_cpu(len);
+ 	return true;
+ }
+@@ -182,6 +191,16 @@
+ 	 */
+ 	l = cpu_to_be16(mlen);
+ 
++	if (!cs->encrypt) {
++		memcpy(out, &l, sizeof(l));
++		memset(out + sizeof(l), 0, 16);
++		memcpy(out + sizeof(l) + 16, msg, mlen);
++		memset(out + sizeof(l) + 16 + mlen, 0, 16);
++        if (taken(msg))
++            tal_free(msg);
++		return out;
++	}
++
+ 	/* BOLT #8:
+ 	 *
+ 	 * 3. Encrypt `l` (using `ChaChaPoly-1305`, `sn`, and `sk`), to obtain
+Index: common/test/run-cryptomsg.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- common/test/run-cryptomsg.c	(revision 5bc2de89979ca8eebb7b4b05da122aeb342c6f31)
++++ common/test/run-cryptomsg.c	(revision 31fedebb4fb61cf5f07b03268dfa67bb0c54047a)
+@@ -66,6 +66,7 @@
+ 	struct secret sk, rk, ck;
+ 	const void *msg;
+ 	size_t i;
++	cs_out.encrypt = cs_in.encrypt = true;
+ 
+ 	setup_tmpctx();
+ 	msg = tal_dup_arr(tmpctx, char, "hello", 5, 0);
+Index: connectd/handshake.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- connectd/handshake.c	(revision 5bc2de89979ca8eebb7b4b05da122aeb342c6f31)
++++ connectd/handshake.c	(revision 31fedebb4fb61cf5f07b03268dfa67bb0c54047a)
+@@ -376,6 +376,7 @@
+ 
+ 	cs.rn = cs.sn = 0;
+ 	cs.r_ck = cs.s_ck = h->ck;
++	cs.encrypt = false;
+ 
+ 	cb = h->cb;
+ 	cbarg = h->cbarg;
