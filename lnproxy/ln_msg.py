@@ -125,8 +125,6 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     modified_payload = bytearray(orig_payload)
     # add the new onion
     struct.pack_into(config.le_onion, modified_payload, 84, generated_onion)
-    # # update the htlc amount to reflect our fee
-    # struct.pack_into(config.be_u64, modified_payload, 40, (amount_msat - config.C_FEE))
     return modified_payload
 
 

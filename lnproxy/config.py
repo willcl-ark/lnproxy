@@ -51,6 +51,9 @@ NODE_DIR = {
 ONION_TOOL: str = "/Users/will/src/lightning/devtools/onion"
 onion_temp_file: str = "/Users/will/src/lnproxy/onion.dat"
 ADD_UPDATE_HTLC: int = 128
+# TODO: These can be calculated on-the-fly from getroute
+#   we should hardcode CLTV used for all channel opens and routing fees
+#   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
 C_FEE: int = 11
 CLTV_d: int = 6
 my_node: int = 0
