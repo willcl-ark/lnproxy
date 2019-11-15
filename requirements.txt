@@ -1,5 +1,0 @@
-docopt==0.6.2
-hkdf==0.0.3
-pylightning==0.0.7.3
-secp256k1==0.13.2
-trio==0.13.0
