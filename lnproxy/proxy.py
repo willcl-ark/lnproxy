@@ -40,28 +40,30 @@ async def unlink_socket(sock):
             raise
 
 
-async def proxy(read_stream, write_stream, direction):
+async def proxy(read_stream, write_stream, initiator, direction):
     """Proxy lightning message traffic from one stream to another.
     Handle and parse certain lightning messages.
     """
-
     # Bolt #8: The handshake proceeds in three acts, taking 1.5 round trips.
-    handshake_acts = 2 if direction == "remote_to_local" else 1
+    hs_acts = 2 if initiator else 1
+    hs_pkt_size = {"outbound": [50, 66], "inbound": [50]}
     i = 0
 
     while True:
         try:
-            if i < handshake_acts:
-
+            if i < hs_acts:
                 # during handshake pass full 50 / 66 B messages transparently for now
+                req_len = hs_pkt_size[direction][i]
                 # TODO: mock these!
                 logger.debug(f"{direction:<15s} | handshake message {i + 1}")
-                message = await read_stream.receive_some(MAX_PKT_LEN)
+                message = b""
+                while len(message) < req_len:
+                    message += await read_stream.receive_some(req_len - len(message))
 
             else:
-
                 # Bolt #8: Read exactly 18 bytes from the network buffer.
                 header = await read_stream.receive_some(MSG_HEADER)
+
                 if len(header) != MSG_HEADER:
                     logger.debug(
                         f"{direction} could not get full header length: 18 != "
@@ -83,6 +85,7 @@ async def proxy(read_stream, write_stream, direction):
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await read_stream.receive_some(MSG_MAC)
+                # we can add a fake MAC on here during full mesh operation
                 # body_mac = 16 * (bytes.fromhex("00"))
 
                 # re-constitute the header and body
@@ -92,7 +95,7 @@ async def proxy(read_stream, write_stream, direction):
                 message = header + body + body_mac
 
             # send to remote
-            # logger.debug(f"Sending message {direction:<15s} | {len(message)}")
+            logger.debug(f"Sending message {direction:<15s} | {len(message)}")
             await write_stream.send_all(message)
 
             # increment handshake counter
@@ -106,17 +109,18 @@ async def socket_handler_local(local_stream):
     Makes outbound connection to proxy traffic with.
     :arg local_stream: a trio.SocketStream for the listening socket
     """
+    logger.debug(f"Starting proxy for a local inbound connection")
     # When we receive a new connection from a local node, open a new connection to
     # the remote node & proxy the streams
-    remote_stream = await trio.open_unix_socket(config.remote_listen_SOCK)
+    logger.debug("Making outbound connection to remote node")
+    remote_stream = await trio.open_unix_socket(config.remote_node_addr)
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
-            logger.debug(f"Starting proxy")
-            nursery.start_soon(proxy, local_stream, remote_stream, "local_to_remote")
-            nursery.start_soon(proxy, remote_stream, local_stream, "remote_to_local")
+            nursery.start_soon(proxy, local_stream, remote_stream, True, "outbound")
+            nursery.start_soon(proxy, remote_stream, local_stream, False, "inbound")
     except Exception:
-        logger.exception(f"socket_handler: crashed")
+        logger.exception(f"Local socket_handler: crashed")
     finally:
         await remote_stream.aclose()
 
@@ -125,17 +129,18 @@ async def socket_handler_remote(remote_stream):
     """Handles a listening socket for remote connections.
     :arg remote_stream: a trio.SocketStream for the listening socket
     """
+    logger.debug(f"Starting proxy for a remote inbound connection")
     # When we receive a new connection from a remote node, open a new connection to
     # the local node & proxy the streams
+    logger.debug(f"Making outbound connection to local node")
     local_stream = await trio.open_unix_socket(config.local_node_addr)
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
-            logger.debug(f"Starting proxy")
-            nursery.start_soon(proxy, remote_stream, local_stream, "remote_to_local")
-            nursery.start_soon(proxy, local_stream, remote_stream, "local_to_remote")
+            nursery.start_soon(proxy, local_stream, remote_stream, False, "inbound")
+            nursery.start_soon(proxy, remote_stream, local_stream, True, "outbound")
     except Exception:
-        logger.exception(f"socket_handler: crashed")
+        logger.exception(f"Remote socket_handler: crashed")
     finally:
         await local_stream.aclose()
 
@@ -143,6 +148,7 @@ async def socket_handler_remote(remote_stream):
 async def serve_unix_socket(socket_address, local):
     """Serve a listening socket
     """
+    loc = "local" if local is True else "remote"
     await unlink_socket(socket_address)
     listeners = []
 
@@ -150,7 +156,7 @@ async def serve_unix_socket(socket_address, local):
     sock = trio.socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     await sock.bind(socket_address)
     sock.listen()
-    logger.debug(f"Listening for connections on Unix Socket: {socket_address}")
+    logger.debug(f"Listening for {loc} connections on Unix Socket: {socket_address}")
     listeners.append(trio.SocketListener(sock))
 
     # Manage the listening with the handler

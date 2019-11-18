@@ -131,11 +131,19 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
 def parse(msg: bytes, direction: str) -> bytes:
     """Parse a lightning message and return it
     """
+    # handle empty messages gracefully
+    if msg == b"":
+        return msg
+
     msg_type = msg[0:2]
     msg_payload = msg[2:]
-
-    # check the message type
     msg_code = deserialize_type(msg_type)
+
+    # filter unknown codes
+    if msg_code not in codes.keys():
+        logger.warning(f"Message code not found in codes.keys(): {msg_code}")
+        return msg
+
     logger.debug(
         f"{direction:<15s} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B"
     )

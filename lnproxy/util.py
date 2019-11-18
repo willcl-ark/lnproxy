@@ -68,17 +68,17 @@ def set_socks(node):
         config.remote_listen_SOCK = "/tmp/unix_proxy1_remotes"
         config.local_listen_SOCK = "/tmp/unix_proxy1_local"
         config.local_node_addr = "/tmp/l1-regtest/unix_socket"
-        config.remote_node_addr = "/tmp/l2-regtest/unix_socket"
+        config.remote_node_addr = "/tmp/unix_proxy2_remotes"
     elif node == 1:
         config.remote_listen_SOCK = "/tmp/unix_proxy2_remotes"
         config.local_listen_SOCK = "/tmp/unix_proxy2_local"
         config.local_node_addr = "/tmp/l2-regtest/unix_socket"
-        config.remote_node_addr = "/tmp/l3-regtest/unix_socket"
+        config.remote_node_addr = "/tmp/unix_proxy3_remotes"
     elif node == 2:
         config.remote_listen_SOCK = "/tmp/unix_proxy3_remotes"
         config.local_listen_SOCK = "/tmp/unix_proxy3_local"
         config.local_node_addr = "/tmp/l3-regtest/unix_socket"
-        config.remote_node_addr = "/tmp/l1-regtest/unix_socket"
+        config.remote_node_addr = "tmp/unix_proxy1_remotes"
     logger.debug(f"remote_list_sock = {config.remote_listen_SOCK}")
     logger.debug(f"local_listen_sock = {config.local_listen_SOCK}")
     logger.debug(f"local_node_addr = {config.local_node_addr}")
