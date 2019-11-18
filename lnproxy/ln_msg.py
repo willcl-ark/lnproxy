@@ -1,5 +1,6 @@
 import logging
 import struct
+from typing import Tuple
 
 import lnproxy.config as config
 import lnproxy.onion as onion
@@ -56,39 +57,40 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     amount_msat = struct.unpack(config.be_u64, orig_payload[40:48])[0]
     payment_hash = struct.unpack(config.le_32b, orig_payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, orig_payload[80:84])[0]
-    _onion = struct.unpack(config.le_onion, orig_payload[84:1450])[0]
 
-    htlc_logger.debug(f"channel_id: {channel_id.hex()}")
-    htlc_logger.debug(f"id: {_id}")
-    htlc_logger.debug(f"amount_msat: {amount_msat}")
-    htlc_logger.debug(f"payment_hash: {payment_hash.hex()}")
-    htlc_logger.debug(f"cltv_expiry: {cltv_expiry}")
-    logger.debug(f"original onion length: {len(_onion)}")
-    # logger.debug(f"original onion:\n{_onion.hex()}")
+    htlc_logger.debug(f"{direction:<8s} | channel_id: {channel_id.hex()}")
+    htlc_logger.debug(f"{direction:<8s} | id: {_id}")
+    htlc_logger.debug(f"{direction:<8s} | amount_msat: {amount_msat}")
+    htlc_logger.debug(f"{direction:<8s} | payment_hash: {payment_hash.hex()}")
+    htlc_logger.debug(f"{direction:<8s} | cltv_expiry: {cltv_expiry}")
 
-    # decode the original onion
-    with open(config.onion_temp_file, "w") as f:
-        f.write(_onion.hex())
-    # TODO: remove config.my_node hack!
-    priv_keys = onion.get_regtest_privkeys()[config.my_node :]
-    logger.debug("Decoding original onion")
-    orig_payloads, orig_nexts = onion.decode_onion(
-        config.onion_temp_file, priv_keys, payment_hash.hex(),
-    )
+    # htlc from local lightning node:
+    if direction == "outbound":
+        # _onion = struct.unpack(config.le_onion, orig_payload[84:1450])[0]
+        # logger.debug(f"original onion length: {len(_onion)}")
+        # logger.debug(f"original onion:\n{_onion.hex()}")
 
-    # # htlc from local lightning node
-    # if direction == "local_to_remote":
-    #     # chop off the onion before sending
-    #     logger.debug("Chopping off onion before transmission")
-    #     return orig_payload[0:84]
+        # # decode the original onion
+        # with open(config.onion_temp_file, "w") as f:
+        #     f.write(_onion.hex())
+        # # TODO: remove config.my_node hack!
+        # logger.debug("Decoding original onion")
+        # orig_payloads, orig_nexts = onion.decode_onion(
+        #     config.onion_temp_file, priv_keys, payment_hash.hex(),
+        # )
+        # logger.debug(f"Original payloads:{orig_payloads}")
+
+        # chop off the onion before sending
+        htlc_logger.debug(f"{direction:<8s} | Chopping off onion before transmission")
+        return orig_payload[0:84]
 
     # htlc from external lightning node
-    if direction == "remote_to_local":
-        # generate a new onion
-        logger.debug("Generating new onion")
+    if direction == "inbound":
+        # generate a new onion as there won't be one
+        htlc_logger.debug(f"{direction:<8s} | Generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            logger.debug("We're the final hop!")
+            htlc_logger.debug("We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
@@ -100,56 +102,60 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
         else:
             # else generate an onion with our pk as first_hop and next hop pk as
             # second_pubkey
-            logger.debug("We're not the final hop...")
+            htlc_logger.debug("We're not the final hop...")
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
                 next_pubkey=config.next_node_pubkey,
-                amount_msat=amount_msat - config.C_FEE,
+                amount_msat=amount_msat,
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
 
-    # decode generated onion
-    with open(config.onion_temp_file, "w") as f:
-        f.write(generated_onion.hex())
-    logger.debug("Decoding generated onion:")
-    gen_payloads, gen_nexts = onion.decode_onion(
-        config.onion_temp_file, priv_keys, payment_hash.hex(),
-    )
+        # DEBUG: decode generated onion
+        priv_keys = onion.get_regtest_privkeys()[config.my_node :]
+        with open(config.onion_temp_file, "w") as f:
+            f.write(generated_onion.hex())
+        htlc_logger.debug("Decoding generated onion:")
+        gen_payloads, gen_nexts = onion.decode_onion(
+            config.onion_temp_file, priv_keys, payment_hash.hex(),
+        )
+        htlc_logger.debug("Onion comparisons:")
+        htlc_logger.debug(f"Payloads:{gen_payloads}")
+        htlc_logger.debug(f"Nexts:{gen_nexts}")
 
-    logger.debug("Onion comparisons:")
-    logger.debug(f"Payloads:\n{orig_payloads}\n{gen_payloads}")
-    logger.debug(f"Payloads match: {orig_payloads == gen_payloads}")
-    logger.debug(f"Nexts:\n{orig_nexts}\n{gen_nexts}")
-
-    modified_payload = bytearray(orig_payload)
-    # add the new onion
-    struct.pack_into(config.le_onion, modified_payload, 84, generated_onion)
-    return modified_payload
+        modified_payload = orig_payload
+        # add the new onion
+        modified_payload += struct.pack(config.le_onion, generated_onion)
+        return modified_payload
 
 
-def parse(msg: bytes, direction: str) -> bytes:
-    """Parse a lightning message and return it
+def parse(header: bytes, body: bytes, direction: str) -> Tuple[bytes, bytes]:
+    """Parse a lightning message, optionally modify and then return it
     """
     # handle empty messages gracefully
-    if msg == b"":
-        return msg
+    if body == b"":
+        return header, body
 
-    msg_type = msg[0:2]
-    msg_payload = msg[2:]
+    msg_type = body[0:2]
+    msg_payload = body[2:]
     msg_code = deserialize_type(msg_type)
 
-    # filter unknown codes
+    # filter unknown codes and return without processing
     if msg_code not in codes.keys():
-        logger.warning(f"Message code not found in codes.keys(): {msg_code}")
-        return msg
+        logger.warning(f"Message code not found in ln_msg.codes.keys(): {msg_code}")
+        return header, body
 
     logger.debug(
-        f"{direction:<15s} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B"
+        f"{direction:<8s} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B"
     )
 
-    # handle htlc_updates
+    # handle htlc_add_update
     if msg_code == config.ADD_UPDATE_HTLC:
-        return msg_type + parse_update_add_htlc(msg_payload, direction)
+        body = msg_type + parse_update_add_htlc(msg_payload, direction)
+        # recompute header based on length
+        _header = b""
+        _header += struct.pack(">H", len(body))
+        _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
+        return _header, body
 
-    return msg_type + msg_payload
+    return header, msg_type + msg_payload

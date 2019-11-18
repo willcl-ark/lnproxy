@@ -54,7 +54,7 @@ ADD_UPDATE_HTLC: int = 128
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
 #   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
-C_FEE: int = 11
+C_FEE: int = 2
 CLTV_d: int = 6
 my_node: int = 0
 my_node_dir: str = ""
