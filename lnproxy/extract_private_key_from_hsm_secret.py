@@ -10,7 +10,7 @@ import secp256k1
 from hkdf import Hkdf
 from lightning import LightningRpc
 
-import config
+import lnproxy.config as config
 
 nodes = [0, 1, 2]
 

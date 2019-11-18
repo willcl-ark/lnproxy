@@ -2,9 +2,9 @@ import logging
 import struct
 import subprocess
 
-import config
-import extract_private_key_from_hsm_secret
-import util
+import lnproxy.config as config
+import lnproxy.extract_private_key_from_hsm_secret as extract_pk_from_hsm
+import lnproxy.util as util
 
 
 logging.basicConfig(level=logging.DEBUG)

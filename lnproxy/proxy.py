@@ -13,9 +13,9 @@ import struct
 
 import trio
 
-import config
-import ln_msg
-import util
+import lnproxy.config as config
+import lnproxy.ln_msg as ln_msg
+import lnproxy.util as util
 
 
 logger = logging.getLogger(f"{'PROXY':<6s}")

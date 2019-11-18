@@ -1,9 +1,9 @@
 import logging
 import struct
 
-import config
-import onion
-import util
+import lnproxy.config as config
+import lnproxy.onion as onion
+import lnproxy.util as util
 
 logger = logging.getLogger(f"{'MSG':<6s}")
 htlc_logger = logging.getLogger(f"{'HTLC':<6s}")

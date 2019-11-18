@@ -3,7 +3,7 @@ import struct
 
 from lightning import LightningRpc
 
-import config
+import lnproxy.config as config
 
 logger = logging.getLogger(f"{'UTIL':<6s}")
 rpc = None
