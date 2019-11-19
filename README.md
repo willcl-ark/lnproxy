@@ -30,9 +30,9 @@ Now our home directory has the following structure:
        ├── lightning
        └── lnproxy
 
-Next we install poetry to the system python 3:
+Next we install the python package manager poetry:
 
-    pip3 install poetry
+    curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
 
 Now, we are ready to set the projects up...
 
@@ -49,9 +49,10 @@ Follow the remaining installation instructions for your OS as found [install ](h
 Switch into the directory, create a new virtual env, activate it and install the package
 
     cd ~/src/lnproxy
-    python3 -m venv .venv
-    source .venv/bin/activate
+    pyenv install 3.7.5
+    pyenv local 3.7.5  # Activate Python 3.7.5 for the current project
     poetry install
+
 
 ### Fish shell 
 
@@ -79,7 +80,7 @@ Testing currently uses 4 terminal windows, these could also be screen/tmux sessi
 You will see printed a list of available commands for later reference. We must now start the 3 Lnproxies, one for each node, before connecting the nodes together. In a new terminal window:
 
     cd ~/src/lnproxy
-    source .venv/bin/activate
+    poetry shell
     python lnproxy/proxy.py 1
     
 In the next two terminal windows run the same commands, changing the '1' on the final line to a '2' and a '3' respectively.
