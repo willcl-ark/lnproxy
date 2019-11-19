@@ -1,12 +1,11 @@
 [tool.poetry]
 name = "lnproxy"
-version = "0.1.3"
+version = "0.1.4"
 description = "Proxy modified C-Lightning clients' traffic, removing onions for mesh transmission "
 authors = ["willcl-ark <will8clark@gmail.com>"]
 license = "MIT"
 readme = 'README.md'
 repository = 'https://github.com/willcl-ark/lnproxy'
-
 
 [tool.poetry.dependencies]
 python = "^3.7"
@@ -19,9 +18,10 @@ trio = "^0.13.0"
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 
+[tool.poetry.scripts]
+lnproxy = 'lnproxy.proxy:main'
+
 [build-system]
 requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
 
-[tool.poetry.scripts]
-lnproxy = 'lnproxy.proxy:main'

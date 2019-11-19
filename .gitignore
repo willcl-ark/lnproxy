@@ -1,3 +1,5 @@
 /lnproxy/__pycache__/
 .python-version
 onion.dat
+/lnproxy.egg-info/
+/dist/

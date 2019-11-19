@@ -5,7 +5,10 @@ Proxy connections from a patched C-Lightning.
 Removes onions before HTLC transmission and re-generates them upon receipt.
 
 ### Requirements
-* Python 3.7.x
+
+* Python 3.7.5
+    
+* [pyenv](https://github.com/pyenv/pyenv) 
 
 * C-Lightning compiled with noencrypt.patch applied. The patch can be found in clightning dir of this project
 
@@ -19,7 +22,7 @@ We will be cloning two code repositories, so let's keep things neat. If you alre
 Now we will clone the two projects:
 
     # C-Lightning, forked from ElementsProject
-    git clone https://github.com/willcl-ark/lightning/tree/noencrypt-mesh
+    git clone https://github.com/willcl-ark/lightning.git
     
     # Lnproxy
     git clone https://github.com/willcl-ark/lnproxy.git
@@ -30,7 +33,7 @@ Now our home directory has the following structure:
        ├── lightning
        └── lnproxy
 
-Next we install the python package manager poetry:
+Next we install the python dependency/package manager poetry (other install methods available, see [website](https://github.com/sdispater/poetry)):
 
     curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
 
@@ -38,9 +41,10 @@ Now, we are ready to set the projects up...
 
 ### C Lightning preparation
 
-Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended) or patching C-Lightning manually using the provided patch. From my branch that we already cloned:
+Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), if you followed above instruction you have already done this, or patching C-Lightning manually using the provided patch. To use the pre-patched branch:
 
     cd ~/src/lightning
+    git checkout noencrypt-mesh
 
 Follow the remaining installation instructions for your OS as found [install ](https://github.com/willcl-ark/lightning/blob/noencrypt-mesh/doc/INSTALL.md)
 
@@ -50,15 +54,18 @@ Switch into the directory, create a new virtual env, activate it and install the
 
     cd ~/src/lnproxy
     pyenv install 3.7.5
-    pyenv local 3.7.5  # Activate Python 3.7.5 for the current project
+    pyenv local 3.7.5
+    python3 -m venv .venv
+    source .venv/bin/activate       # bash shell
+    source .venv/bin/activate.fish  # fish shell
     poetry install
 
-
+This will also install 
 ### Fish shell 
 
 (Optional, but recommended)
 
-I have made a fish shell script in my C-Lightning repo which provides a lot of useful helper functions for regtest environment testing. You can, and I recommend, installing fish shell (but not making it your default shell, yet!) so that you can use them.
+I have added to the C-Lightning contrib startup script in a fish shell version which provides a lot of useful helper functions for regtest environment testing. You can, and I recommend, installing fish shell (but not making it your default shell, yet!) so that you can use them.
 
 On macOS, this is as easy as
 
@@ -80,8 +87,8 @@ Testing currently uses 4 terminal windows, these could also be screen/tmux sessi
 You will see printed a list of available commands for later reference. We must now start the 3 Lnproxies, one for each node, before connecting the nodes together. In a new terminal window:
 
     cd ~/src/lnproxy
-    poetry shell
-    python lnproxy/proxy.py 1
+    poetry shell        # alternatively: source .venv/bin/activate(.fish)
+    lnproxy 1
     
 In the next two terminal windows run the same commands, changing the '1' on the final line to a '2' and a '3' respectively.
 
