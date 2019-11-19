@@ -67,7 +67,7 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 header = await read_stream.receive_some(MSG_HEADER)
 
                 if len(header) != MSG_HEADER:
-                    logger.debug(
+                    logger.warning(
                         f"{direction} could not get full header length: 18 != "
                         f"{len(header)}"
                     )
@@ -110,11 +110,11 @@ async def socket_handler_local(local_stream):
     Makes outbound connection to proxy traffic with.
     :arg local_stream: a trio.SocketStream for the listening socket
     """
-    logger.debug(f"Starting proxy for a local inbound connection")
     # When we receive a new connection from a local node, open a new connection to
     # the remote node & proxy the streams
-    logger.debug("Making outbound connection to remote node")
+    logger.debug(f"Got new inbound connection from local node.")
     remote_stream = await trio.open_unix_socket(config.remote_node_addr)
+    logger.debug(f"Proxying local inbound connection to remote node")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
@@ -130,11 +130,11 @@ async def socket_handler_remote(remote_stream):
     """Handles a listening socket for remote connections.
     :arg remote_stream: a trio.SocketStream for the listening socket
     """
-    logger.debug(f"Starting proxy for a remote inbound connection")
     # When we receive a new connection from a remote node, open a new connection to
     # the local node & proxy the streams
-    logger.debug(f"Making outbound connection to local node")
+    logger.debug(f"Got new inbound connection from remote node.")
     local_stream = await trio.open_unix_socket(config.local_node_addr)
+    logger.debug(f"Proxying remote inbound connection to to local node...")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
@@ -157,7 +157,9 @@ async def serve_unix_socket(socket_address, local):
     sock = trio.socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     await sock.bind(socket_address)
     sock.listen()
-    logger.debug(f"Listening for {loc} connections on Unix Socket: {socket_address}")
+    logger.debug(
+        f"Listening for {loc} inbound connections on Unix Socket: " f"{socket_address}"
+    )
     listeners.append(trio.SocketListener(sock))
 
     # Manage the listening with the handler
@@ -168,8 +170,6 @@ async def serve_unix_socket(socket_address, local):
             await trio.serve_listeners(socket_handler_remote, listeners)
     except Exception:
         logger.exception("serve_unix_socket: crashed")
-    finally:
-        await trio.Path.unlink(config.local_listen_SOCK)
 
 
 async def serve_sockets():

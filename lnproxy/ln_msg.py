@@ -81,7 +81,7 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
         # logger.debug(f"Original payloads:{orig_payloads}")
 
         # chop off the onion before sending
-        htlc_logger.debug(f"{direction:<8s} | Chopping off onion before transmission")
+        htlc_logger.info(f"{direction:<8s} | Chopping off onion before transmission")
         return orig_payload[0:84]
 
     # htlc from external lightning node
@@ -99,9 +99,11 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry,
             )
+            priv_keys = onion.get_regtest_privkeys([config.my_node])
         else:
-            # else generate an onion with our pk as first_hop and next hop pk as
+            # else generate an onion with ou5r pk as first_hop and next hop pk as
             # second_pubkey
+            # TODO: calculate: also subtract config.CLTV_d from cltv_expiry
             htlc_logger.debug("We're not the final hop...")
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
@@ -110,18 +112,18 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-
+            priv_keys = onion.get_regtest_privkeys(
+                [config.my_node, (config.my_node + 1) % 3]
+            )
         # DEBUG: decode generated onion
-        priv_keys = onion.get_regtest_privkeys()[config.my_node :]
         with open(config.onion_temp_file, "w") as f:
             f.write(generated_onion.hex())
         htlc_logger.debug("Decoding generated onion:")
         gen_payloads, gen_nexts = onion.decode_onion(
             config.onion_temp_file, priv_keys, payment_hash.hex(),
         )
-        htlc_logger.debug("Onion comparisons:")
-        htlc_logger.debug(f"Payloads:{gen_payloads}")
-        htlc_logger.debug(f"Nexts:{gen_nexts}")
+        htlc_logger.debug(f"Payload(s):{gen_payloads}")
+        htlc_logger.debug(f"_next(s):{gen_nexts}")
 
         modified_payload = orig_payload
         # add the new onion
@@ -145,14 +147,14 @@ def parse(header: bytes, body: bytes, direction: str) -> Tuple[bytes, bytes]:
         logger.warning(f"Message code not found in ln_msg.codes.keys(): {msg_code}")
         return header, body
 
-    logger.debug(
+    logger.info(
         f"{direction:<8s} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B"
     )
 
     # handle htlc_add_update
     if msg_code == config.ADD_UPDATE_HTLC:
         body = msg_type + parse_update_add_htlc(msg_payload, direction)
-        # recompute header based on length
+        # recompute header based on length of msg without onion
         _header = b""
         _header += struct.pack(">H", len(body))
         _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
