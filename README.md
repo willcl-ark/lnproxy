@@ -17,9 +17,9 @@ Currently hardcoded values for a 3 node regtest, setup.
 
 ### General preparation
 
-We will be cloning one or two code repositories, so let's keep things neat. If you already have a source code directory use that, otherwise we will make a new one:
+We will be cloning one or two code repositories, so let's keep things neat. If you already have a source code directory you can use that, but note that some of the temporary hardcodes in lnproxy.config.py might not work properly... To make a new one:
 
-    mkdir ~/src
+    mkdir ~/lnproxy_src
 
 Now, we are ready to set the projects up...
 
@@ -27,7 +27,7 @@ Now, we are ready to set the projects up...
 
 Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), if you followed above instruction you have already done this, or patching C-Lightning manually using the provided patch. To use the pre-patched branch:
 
-    cd ~/src
+    cd ~/lnproxy_src
     git clone https://github.com/willcl-ark/lightning.git
     cd lightning
     git checkout noencrypt-mesh
@@ -46,7 +46,7 @@ Start by installing the python dependency/package manager poetry (other install 
 
 Now we can do main clone and setup:
 
-    cd ~/src
+    cd ~/lnproxy_src
     git clone https://github.com/willcl-ark/lnproxy.git
     cd lnproxy
     pyenv install 3.7.5 && pyenv local 3.7.5
@@ -58,7 +58,7 @@ Now we can do main clone and setup:
 
 #### Using pip
 
-    mkdir -p ~/src/lnproxy && cd ~/src/lnproxy
+    mkdir -p ~/lnproxy_src/lnproxy && cd ~/lnproxy_src/lnproxy
     pyenv install 3.7.5 && pyenv local 3.7.5
     python3 -m venv .venv
     source .venv/bin/activate       # bash shell
@@ -82,7 +82,7 @@ But installation of other platforms is equally easy: [install fish](https://fish
 
 Testing currently uses 4 terminal windows, these could also be screen/tmux sessions if you prefer. Lets start, but not connect or use the 3 C-Lightning nodes:
 
-    cd ~/src/lightning
+    cd ~/lnproxy_src/lightning
     # switch to fish shell
     fish
     source contrib/startup_regtest_fish.sh
@@ -92,7 +92,7 @@ You will see printed a list of available commands for later reference. Of note y
 
 We can now start the 3 Lnproxies, one for each node, before connecting the nodes together. In a new terminal window (or screen) for each proxy:
 
-    cd ~/src/lnproxy
+    cd ~/lnproxy_src/lnproxy
     poetry shell        # alternatively: `source .venv/bin/activate(.fish)`
     lnproxy 1
     

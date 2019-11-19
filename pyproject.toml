@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lnproxy"
-version = "0.1.5"
+version = "0.2.0"
 description = "Proxy modified C-Lightning clients' traffic, removing onions for mesh transmission "
 authors = ["willcl-ark <will8clark@gmail.com>"]
 license = "MIT"

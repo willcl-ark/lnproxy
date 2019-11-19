@@ -25,6 +25,7 @@ uint8(x)                if x < 0xfd
 """
 
 import logging
+from pathlib import Path
 
 # BigSize struct formatting codes
 be_u8: str = ">B"
@@ -39,17 +40,19 @@ log_format = logging.basicConfig(
     level=logging.DEBUG, format="%(name)6s | %(levelname)7s | %(message)s"
 )
 
+home = str(Path.home())
+
 
 #####################################
 # TODO: Hardcodes to get rid of later
-LN_CLI: str = "/Users/will/src/lightning/cli/lightning-cli"
+LN_CLI: str = f"{home}/lnproxy_src/lightning/cli/lightning-cli"
 NODE_DIR = {
     0: "/tmp/l1-regtest",
     1: "/tmp/l2-regtest",
     2: "/tmp/l3-regtest",
 }
-ONION_TOOL: str = "/Users/will/src/lightning/devtools/onion"
-onion_temp_file: str = "/Users/will/src/lnproxy/onion.dat"
+ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+onion_temp_file: str = f"{home}/lnproxy_src/lnproxy/temp_onion.dat"
 ADD_UPDATE_HTLC: int = 128
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
