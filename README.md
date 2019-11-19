@@ -30,10 +30,6 @@ Now our home directory has the following structure:
        ├── lightning
        └── lnproxy
 
-Next, let's install poetry python dependency manager to system python 3:
-
-    pip3 install poetry
-
 Now, we can set the projects up...
 
 
