@@ -49,9 +49,9 @@ def encode_hop_data(
     return hop_data
 
 
-def get_regtest_privkeys():
+def get_regtest_privkeys(nodes):
     keys = []
-    for node in extract_pk_from_hsm.nodes:
+    for node in nodes:
         keys.append(extract_pk_from_hsm.get_privkey(node))
     return keys
 
