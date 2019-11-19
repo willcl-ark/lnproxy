@@ -32,7 +32,6 @@ Now our home directory has the following structure:
 
 Now, we can set the projects up...
 
-
 ### C Lightning preparation
 
 Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended) or patching C-Lightning manually using the provided patch. From my branch that we already cloned:
