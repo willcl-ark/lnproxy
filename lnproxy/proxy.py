@@ -188,9 +188,9 @@ async def serve_sockets():
         await unlink_socket(config.local_listen_SOCK)
 
 
-if __name__ == "__main__":
-    args = docopt(__doc__, version="Lightning mesh proxy 0.1")
-    config.my_node = int(args["NODE_ID"]) - 1
+def main():
+    _args = docopt(__doc__, version="Lightning mesh proxy 0.1")
+    config.my_node = int(_args["NODE_ID"]) - 1
     util.init_nodes()
     util.set_socks(int(config.my_node))
     logger.debug(f"config.my_node = {config.my_node}")
@@ -202,3 +202,7 @@ if __name__ == "__main__":
         print("Stopping proxy")
     except Exception:
         logger.exception("Main thread stopped")
+
+
+if __name__ == "__main__":
+    main()
