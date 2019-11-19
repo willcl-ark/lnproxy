@@ -30,7 +30,11 @@ Now our home directory has the following structure:
        ├── lightning
        └── lnproxy
 
-We can set the projects up...
+Next, let's install poetry python dependency manager to system python 3:
+
+    pip3 install poetry
+
+Now, we can set the projects up...
 
 
 ### C Lightning preparation
@@ -43,17 +47,12 @@ Follow the remaining installation instructions for your OS as found [install ](h
 
 ### Lnproxy Installation
 
-Switch into the directory
+Switch into the directory, create a new virtual env, activate it and install the package
 
     cd ~/src/lnproxy
-
-Create a new virtual env, activate it and install poetry dependency manager, then install remaining requirements:
-
     python3 -m venv .venv
     source .venv/bin/activate
-    pip install poetry
-    poetry install
-
+    pip install lnproxy
 
 ### Fish shell 
 
