@@ -1,4 +1,5 @@
 import logging
+import pathlib
 import struct
 
 from lightning import LightningRpc
@@ -83,6 +84,24 @@ def set_socks(node):
     logger.debug(f"local_listen_sock = {config.local_listen_SOCK}")
     logger.debug(f"local_node_addr = {config.local_node_addr}")
     logger.debug(f"remote_node_addr = {config.remote_node_addr}")
+
+
+def check_onion_tool():
+    try:
+        while True:
+            onion = pathlib.Path(config.ONION_TOOL)
+            if onion.exists() and onion.is_file():
+                break
+            logger.error(f"Onion tool not found at {config.ONION_TOOL}")
+            config.ONION_TOOL = input(
+                "Please enter the exact path to C-Lightning onion" "tool:\n"
+            )
+        return True
+    except KeyboardInterrupt:
+        print("Onion tool not found, exiting")
+    except Exception:
+        logger.error("Error locating onion tool")
+        return False
 
 
 def hex_dump(data, length=16):

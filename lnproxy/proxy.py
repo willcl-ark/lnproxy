@@ -193,6 +193,9 @@ def main():
     config.my_node = int(_args["NODE_ID"]) - 1
     util.init_nodes()
     util.set_socks(int(config.my_node))
+    if not util.check_onion_tool():
+        logger.error("Onion tool not found")
+        return
     logger.debug(f"config.my_node = {config.my_node}")
     logger.debug(f"Running for node {config.my_node_pubkey}")
     logger.debug(f"Next node pubkey {config.next_node_pubkey}")
