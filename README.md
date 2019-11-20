@@ -17,9 +17,10 @@ Currently hardcoded values for a 3 node regtest, setup.
 
 ### General preparation
 
-We will be cloning one or two code repositories, so let's keep things neat. If you already have a source code directory you can use that, but note that some of the temporary hardcodes in lnproxy.config.py might not work properly... To make a new one:
+We will be cloning one or two code repositories, so let's keep things neat. If you already have a source code directory you can use that, but note that some of the temporary hardcodes in lnproxy.config.py might not work properly... To make a new one and set python version for it (and subdirectories):
 
-    mkdir ~/lnproxy_src
+    mkdir ~/lnproxy_src && cd ~/lnproxy_src
+    pyenv install 3.7.5 && pyenv local 3.7.5
 
 Now, we are ready to set the projects up...
 
@@ -49,7 +50,6 @@ Now we can do main clone and setup:
     cd ~/lnproxy_src
     git clone https://github.com/willcl-ark/lnproxy.git
     cd lnproxy
-    pyenv install 3.7.5 && pyenv local 3.7.5
     python3 -m venv .venv
     source .venv/bin/activate       # bash shell
     source .venv/bin/activate.fish  # fish shell
@@ -59,7 +59,6 @@ Now we can do main clone and setup:
 #### Using pip
 
     mkdir -p ~/lnproxy_src/lnproxy && cd ~/lnproxy_src/lnproxy
-    pyenv install 3.7.5 && pyenv local 3.7.5
     python3 -m venv .venv
     source .venv/bin/activate       # bash shell
     source .venv/bin/activate.fish  # fish shell only
@@ -80,7 +79,7 @@ But installation of other platforms is equally easy: [install fish](https://fish
         
 ## Regtest Testing
 
-Testing currently uses 4 terminal windows, these could also be screen/tmux sessions if you prefer. Lets start, but not connect or use the 3 C-Lightning nodes:
+Testing currently uses 4 terminal windows, these could also be screen/tmux sessions if you prefer. Lets start, but not connect or use, the 3 C-Lightning nodes:
 
     cd ~/lnproxy_src/lightning
     # switch to fish shell
