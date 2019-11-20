@@ -45,7 +45,6 @@ home = str(Path.home())
 
 #####################################
 # TODO: Hardcodes to get rid of later
-LN_CLI: str = f"{home}/lnproxy_src/lightning/cli/lightning-cli"
 NODE_DIR = {
     0: "/tmp/l1-regtest",
     1: "/tmp/l2-regtest",
