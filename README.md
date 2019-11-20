@@ -118,4 +118,9 @@ Note that, if it can't find funds or a route C-Lightning polls bitcoind periodic
 
 With a few initial payments made, the reverse direction payments are possible.
 
+
+Another useful command I found is waiting for the route from l1 to l3 to be created, for a payment of 100000 this can be watched for using:
+
+    watch $LCLI --lightning-dir=/tmp/l1-regtest getroute (l3-cli getinfo | jq .id) 100000 0
+
     
