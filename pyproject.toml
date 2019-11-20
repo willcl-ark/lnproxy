@@ -19,6 +19,7 @@ trio = "^0.13.0"
 
 [tool.poetry.scripts]
 lnproxy = 'lnproxy.proxy:main'
+lnproxy-keys = 'lnproxy.pk_from_hsm:main'
 
 [build-system]
 requires = ["poetry>=0.12"]

@@ -52,6 +52,10 @@ def get_privkey(_node):
     return key.hex()
 
 
-if __name__ == "__main__":
+def main():
     for node in nodes:
         print(f"Node l{node} privkey: {get_privkey(node)}")
+
+
+if __name__ == "__main__":
+    main()

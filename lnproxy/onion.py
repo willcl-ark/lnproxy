@@ -3,7 +3,7 @@ import struct
 import subprocess
 
 import lnproxy.config as config
-import lnproxy.extract_private_key_from_hsm_secret as extract_pk_from_hsm
+import lnproxy.pk_from_hsm as extract_pk_from_hsm
 import lnproxy.util as util
 
 
