@@ -189,7 +189,7 @@ async def serve_sockets():
 
 
 def main():
-    _args = docopt(__doc__, version="Lightning mesh proxy 0.2.0")
+    _args = docopt(__doc__, version="Lightning mesh proxy 0.2.1")
     config.my_node = int(_args["NODE_ID"]) - 1
     util.init_nodes()
     util.set_socks(int(config.my_node))
