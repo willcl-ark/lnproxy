@@ -1,5 +1,6 @@
 import logging
 import struct
+import tempfile
 from typing import Tuple
 
 import lnproxy.config as config
@@ -116,11 +117,12 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
                 [config.my_node, (config.my_node + 1) % 3]
             )
         # DEBUG: decode generated onion
-        with open(config.onion_temp_file, "w") as f:
+        onion_file = tempfile.NamedTemporaryFile(mode="w+t", delete=False)
+        with open(onion_file.name, "wt") as f:
             f.write(generated_onion.hex())
         htlc_logger.debug("Decoding generated onion:")
         gen_payloads, gen_nexts = onion.decode_onion(
-            config.onion_temp_file, priv_keys, payment_hash.hex(),
+            onion_file.name, priv_keys, payment_hash.hex(),
         )
         htlc_logger.debug(f"Payload(s):{gen_payloads}")
         htlc_logger.debug(f"_next(s):{gen_nexts}")
