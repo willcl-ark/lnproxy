@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import struct
+import time
 
 from lightning import LightningRpc
 
@@ -15,9 +16,18 @@ def init_nodes():
     config.my_node_dir = config.NODE_DIR[config.my_node]
     rpc = LightningRpc(f"{config.my_node_dir}/lightning-rpc")
     rpc.logger = logging.getLogger(f"{'LNRPC':<6s}")
-    rpc.logger.setLevel(logging.ERROR)
     # TODO: remove when not testing
-    config.my_node_pubkey = rpc.getinfo()["id"]
+    # this tests the RPC connection
+    while True:
+        try:
+            config.my_node_pubkey = rpc.getinfo()["id"]
+            break
+        except FileNotFoundError:
+            rpc.logger.error(
+                f"Can't find node {config.my_node}'s lightning-rpc at "
+                f"{config.my_node_dir}/lightning-rpc. Trying again in 2 seconds"
+            )
+            time.sleep(2)
     next_node_dir = config.NODE_DIR[(config.my_node + 1) % 3]
     rpc2 = LightningRpc(f"{next_node_dir}/lightning-rpc")
     config.next_node_pubkey = rpc2.getinfo()["id"]
@@ -80,8 +90,8 @@ def set_socks(node):
         config.local_listen_SOCK = "/tmp/unix_proxy3_local"
         config.local_node_addr = "/tmp/l3-regtest/unix_socket"
         config.remote_node_addr = "tmp/unix_proxy1_remotes"
-    logger.debug(f"remote_list_sock = {config.remote_listen_SOCK}")
-    logger.debug(f"local_listen_sock = {config.local_listen_SOCK}")
+    logger.info(f"remote_list_sock = {config.remote_listen_SOCK}")
+    logger.info(f"local_listen_sock = {config.local_listen_SOCK}")
     logger.debug(f"local_node_addr = {config.local_node_addr}")
     logger.debug(f"remote_node_addr = {config.remote_node_addr}")
 
@@ -98,7 +108,9 @@ def check_onion_tool():
             )
         return True
     except KeyboardInterrupt:
-        print("Onion tool not found, exiting")
+        print("Exiting with KeyboardInterrupt")
+        logger.error("Exiting with KeyboardInterrupt")
+        return False
     except Exception:
         logger.error("Error locating onion tool")
         return False

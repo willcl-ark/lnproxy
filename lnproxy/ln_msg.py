@@ -9,6 +9,10 @@ import lnproxy.util as util
 
 logger = logging.getLogger(f"{'MSG':<6s}")
 htlc_logger = logging.getLogger(f"{'HTLC':<6s}")
+# logger.addHandler(config.fh)
+# logger.addHandler(config.console)
+# htlc_logger.addHandler(config.fh)
+# htlc_logger.addHandler(config.console)
 
 
 codes = {
@@ -59,11 +63,11 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     payment_hash = struct.unpack(config.le_32b, orig_payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, orig_payload[80:84])[0]
 
-    htlc_logger.debug(f"{direction:<8s} | channel_id: {channel_id.hex()}")
-    htlc_logger.debug(f"{direction:<8s} | id: {_id}")
-    htlc_logger.debug(f"{direction:<8s} | amount_msat: {amount_msat}")
-    htlc_logger.debug(f"{direction:<8s} | payment_hash: {payment_hash.hex()}")
-    htlc_logger.debug(f"{direction:<8s} | cltv_expiry: {cltv_expiry}")
+    htlc_logger.info(f"{direction:<8s} | channel_id: {channel_id.hex()}")
+    htlc_logger.info(f"{direction:<8s} | id: {_id}")
+    htlc_logger.info(f"{direction:<8s} | amount_msat: {amount_msat}")
+    htlc_logger.info(f"{direction:<8s} | payment_hash: {payment_hash.hex()}")
+    htlc_logger.info(f"{direction:<8s} | cltv_expiry: {cltv_expiry}")
 
     # htlc from local lightning node:
     if direction == "outbound":
@@ -72,12 +76,15 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
         # logger.debug(f"original onion:\n{_onion.hex()}")
 
         # # decode the original onion
-        # with open(config.onion_temp_file, "w") as f:
+        # onion_file = tempfile.NamedTemporaryFile(mode="w+t", delete=False)
+        # with open(onion_file.name, "wt") as f:
         #     f.write(_onion.hex())
-        # # TODO: remove config.my_node hack!
         # logger.debug("Decoding original onion")
+        # priv_keys = onion.get_regtest_privkeys(
+        #         [(config.my_node + 1) % 3, (config.my_node + 2) % 3]
+        # )
         # orig_payloads, orig_nexts = onion.decode_onion(
-        #     config.onion_temp_file, priv_keys, payment_hash.hex(),
+        #     f.name, priv_keys, payment_hash.hex(),
         # )
         # logger.debug(f"Original payloads:{orig_payloads}")
 
@@ -88,10 +95,10 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
     # htlc from external lightning node
     if direction == "inbound":
         # generate a new onion as there won't be one
-        htlc_logger.debug(f"{direction:<8s} | Generating new onion")
+        htlc_logger.info(f"{direction:<8s} | Generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            htlc_logger.debug("We're the final hop!")
+            htlc_logger.info("We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
@@ -105,7 +112,7 @@ def parse_update_add_htlc(orig_payload: bytes, direction: str) -> bytes:
             # else generate an onion with ou5r pk as first_hop and next hop pk as
             # second_pubkey
             # TODO: calculate: also subtract config.CLTV_d from cltv_expiry
-            htlc_logger.debug("We're not the final hop...")
+            htlc_logger.info("We're not the final hop...")
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
                 next_pubkey=config.next_node_pubkey,

@@ -7,8 +7,9 @@ import lnproxy.pk_from_hsm as extract_pk_from_hsm
 import lnproxy.util as util
 
 
-logging.basicConfig(level=logging.DEBUG)
-onion_logger = logging.getLogger(f"{'ONION':<6s}")
+logger = logging.getLogger(f"{'ONION':<6s}")
+# logger.addHandler(config.fh)
+# logger.addHandler(config.console)
 
 
 def decode_hop_data(hop_data: bytes, layer=0):
@@ -22,7 +23,7 @@ def decode_hop_data(hop_data: bytes, layer=0):
     amt_to_forward = struct.unpack_from(config.be_u64, hop_data, 8 + off)[0]
     outgoing_cltv_value = struct.unpack_from(config.be_u32, hop_data, 16 + off)[0]
     padding = struct.unpack_from("12B", hop_data, 20 + off)[0]
-    onion_logger.debug(
+    logger.debug(
         f"Decoded payload layer {layer}:\n"
         f"\tShort channel id: {short_channel_id}\n"
         f"\tAmt to forward: {amt_to_forward}\n"
@@ -60,7 +61,7 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
     """Takes an ordered list of private keys, an onion and assoc-data (usually payment
     hash) and decodes an onion
     """
-    onion_logger.debug("Decoding onion...")
+    logger.info("Decoding onion...")
     payloads = []
     nexts = []
     i = 1
@@ -78,7 +79,7 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
             capture_output=True,
         )
         if not onion_tool.stderr.decode() == "":
-            onion_logger.error(f"Decode Error: {onion_tool.stderr.decode()}")
+            logger.error(f"Decode Error: {onion_tool.stderr.decode()}")
         onion = onion_tool.stdout.decode()
         # onion_logger.debug(f"Decoded onion: {onion}")
 
@@ -87,9 +88,9 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
         else:
             payload, _next, temp = onion.split("\n")
             temp, _next = _next.split("=")
-            # onion_logger.debug(f"_next: {_next}")
+            logger.debug(f"_next: {_next}")
         temp, payload = payload.split("=")
-        # onion_logger.debug(f"payload: {payload}")
+        logger.debug(f"payload: {payload}")
         decode_hop_data(bytes.fromhex(payload), i)
         payloads.append(payload)
         nexts.append(_next)
@@ -126,7 +127,7 @@ def generate_new(
         # Bolt #7: MUST NOT include short_channel_id for the final node.
         next_hop_id = struct.pack(config.be_u64, 0)
         next_hop_data = encode_hop_data(next_hop_id, amount_msat, cltv_expiry).hex()
-        onion_logger.debug(
+        logger.debug(
             f"Generating new onion using command:\n'devtools/onion generate "
             f"{first_pubkey}/{first_hop_data} {next_pubkey}/{next_hop_data} --assoc-data "
             f"{payment_hash.hex()}'"
@@ -147,7 +148,7 @@ def generate_new(
         # Bolt #7: MUST NOT include short_channel_id for the final node.
         first_hop_id = struct.pack(config.be_u64, 0)
         first_hop_data = encode_hop_data(first_hop_id, amount_msat, cltv_expiry).hex()
-        onion_logger.debug(
+        logger.debug(
             f"Generating new onion using command:\n'devtools/onion generate "
             f"{first_pubkey}/{first_hop_data} --assoc-data "
             f"{payment_hash.hex()}'"
@@ -165,8 +166,8 @@ def generate_new(
     gen_onion = onion_tool.stdout.decode()
 
     if onion_tool.stdout == b"":
-        onion_logger.error(f"Error from onion tool: {onion_tool.stdout.decode()}")
+        logger.error(f"Error from onion tool: {onion_tool.stdout.decode()}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
-    onion_logger.debug("Generated onion!")
-    onion_logger.debug(f"Onion hex:\n{gen_onion_bytes.hex()}")
+    logger.info("Generated onion!")
+    logger.info(f"Onion hex:\n{gen_onion_bytes.hex()}")
     return gen_onion_bytes

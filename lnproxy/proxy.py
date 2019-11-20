@@ -20,7 +20,6 @@ import lnproxy.util as util
 
 logger = logging.getLogger(f"{'PROXY':<6s}")
 
-
 MAX_PKT_LEN: int = 65569
 MSG_LEN: int = 2
 MSG_LEN_MAC: int = 16
@@ -57,7 +56,7 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 # pass full 50 / 66 B messages transparently
                 # TODO: mock these
                 req_len = hs_pkt_size[initiator][i]
-                logger.debug(f"{direction:<8s} | handshake message {i + 1}")
+                logger.info(f"{direction:<8s} | handshake message {i + 1}")
                 message = b""
                 while len(message) < req_len:
                     message += await read_stream.receive_some(req_len - len(message))
@@ -112,9 +111,9 @@ async def socket_handler_local(local_stream):
     """
     # When we receive a new connection from a local node, open a new connection to
     # the remote node & proxy the streams
-    logger.debug(f"Got new inbound connection from local node.")
+    logger.info(f"Got new inbound connection from local node.")
     remote_stream = await trio.open_unix_socket(config.remote_node_addr)
-    logger.debug(f"Proxying local inbound connection to remote node")
+    logger.info(f"Proxying local inbound connection to remote node")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
@@ -132,9 +131,9 @@ async def socket_handler_remote(remote_stream):
     """
     # When we receive a new connection from a remote node, open a new connection to
     # the local node & proxy the streams
-    logger.debug(f"Got new inbound connection from remote node.")
+    logger.info(f"Got new inbound connection from remote node.")
     local_stream = await trio.open_unix_socket(config.local_node_addr)
-    logger.debug(f"Proxying remote inbound connection to to local node...")
+    logger.info(f"Proxying remote inbound connection to to local node...")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
@@ -157,7 +156,7 @@ async def serve_unix_socket(socket_address, local):
     sock = trio.socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     await sock.bind(socket_address)
     sock.listen()
-    logger.debug(
+    logger.info(
         f"Listening for {loc} inbound connections on Unix Socket: " f"{socket_address}"
     )
     listeners.append(trio.SocketListener(sock))
@@ -177,7 +176,7 @@ async def serve_sockets():
     """
     try:
         async with trio.open_nursery() as nursery:
-            logger.debug("Starting serve_unix_socket nursery")
+            logger.info("Starting serve_unix_socket nursery")
             nursery.start_soon(serve_unix_socket, config.remote_listen_SOCK, False)
             nursery.start_soon(serve_unix_socket, config.local_listen_SOCK, True)
 
@@ -197,15 +196,17 @@ def main():
         logger.error("Onion tool not found")
         return
     logger.debug(f"config.my_node = {config.my_node}")
-    logger.debug(f"Running for node {config.my_node_pubkey}")
+    logger.info(f"Running for node {config.my_node_pubkey}")
     logger.debug(f"Next node pubkey {config.next_node_pubkey}")
     try:
         trio.run(serve_sockets)
-    except KeyboardInterrupt:
-        print("Stopping proxy")
     except Exception:
         logger.exception("Main thread stopped")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.warning("Stopping proxy after KeyboardInterrupt")
+        print("Stopping Proxy")
