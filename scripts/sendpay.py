@@ -28,9 +28,14 @@ except RpcError:
 rpc2_node_id = rpc2.getinfo()["id"]
 
 # rpc1 gets a route to rpc2
+# we add 10 satoshi to amount (10 hops max x 1 satoshi fee each)
+# we add 60 to cltv (10 hops max, CLTV of 6 each)
+amt_msat = inv["msatoshi"] + 10
+cltv = 9 + 60
+
 try:
     route = rpc1.getroute(
-        node_id=rpc2_node_id, msatoshi=inv["msatoshi"], riskfactor=10, cltv=15
+        node_id=rpc2_node_id, msatoshi=amt_msat, riskfactor=10, cltv=cltv
     )["route"]
 except RpcError:
     raise
@@ -42,7 +47,7 @@ try:
         route=route,
         payment_hash=inv["payment_hash"],
         description=uuid4().hex,
-        msatoshi=inv["msatoshi"],
+        msatoshi=amt_msat,
     )
 except RpcError:
     raise
