@@ -1,6 +1,7 @@
 import logging
 import struct
 import subprocess
+import tempfile
 
 import lnproxy.config as config
 import lnproxy.pk_from_hsm as extract_pk_from_hsm
@@ -57,22 +58,32 @@ def get_regtest_privkeys(nodes):
     return keys
 
 
-def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
-    """Takes an ordered list of private keys, an onion and assoc-data (usually payment
+def decode_onion(onion: bytes, priv_keys: list, assoc_data: str):
+    """Takes an onion, an ordered list of private keys, an onion and assoc-data (usually payment
     hash) and decodes an onion
     """
     logger.info("Decoding onion...")
+    logger.debug(f"original onion length: {len(onion)}")
+    logger.debug(f"original onion:\n{onion.hex()}")
     payloads = []
     nexts = []
-    i = 1
-    for priv_key in priv_keys:
+    i = 0
+
+    # write the onion to a temporary file in hex format
+    onion_file = tempfile.NamedTemporaryFile(mode="w+t", delete=False)
+    with open(onion_file.name, "wt") as f:
+        f.write(onion.hex())
+
+    while True:
+        # keep looping through priv keys until '_next' not in onion
+        # this way we can go A -> B, B -> C and A -> B -> C
         _next = ""
         onion_tool = subprocess.run(
             [
                 config.ONION_TOOL,
                 "decode",
-                onion_file_path,
-                f"{priv_key}",
+                onion_file.name,
+                f"{priv_keys[i % 3]}",
                 "--assoc-data",
                 f"{assoc_data}",
             ],
@@ -81,24 +92,29 @@ def decode_onion(onion_file_path: str, priv_keys: list, assoc_data: str):
         if not onion_tool.stderr.decode() == "":
             logger.error(f"Decode Error: {onion_tool.stderr.decode()}")
         onion = onion_tool.stdout.decode()
-        # onion_logger.debug(f"Decoded onion: {onion}")
+        logger.debug(f"Decoded onion: {onion}")
 
         if "next=" not in onion:
+            # last layer of onion, only a payload inside!
             payload = onion.strip()
         else:
-            payload, _next, temp = onion.split("\n")
-            temp, _next = _next.split("=")
+            # get payload and next onion layer
+            payload, _next = onion.splitlines()
+            _next = _next.split("=")[1]
             logger.debug(f"_next: {_next}")
-        temp, payload = payload.split("=")
+            nexts.append(_next)
+
+        payload = payload.split("=")[1]
         logger.debug(f"payload: {payload}")
         decode_hop_data(bytes.fromhex(payload), i)
         payloads.append(payload)
-        nexts.append(_next)
 
-        if _next:
-            with open(onion_file_path, "w") as f:
+        if _next is not "":
+            with open(onion_file.name, "wt") as f:
                 f.write(_next)
             i += 1
+        else:
+            break
     return payloads, nexts
 
 
