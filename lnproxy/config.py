@@ -43,14 +43,17 @@ Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 # setup logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s | %(name)6s | %(levelname)7s | %(message)s",
-    datefmt="%m-%d %H:%M",
+    format="%(asctime)s.%(msecs)03d | %(name)6s | %(levelname)7s | %(message)s",
+    datefmt="%m-%d %H:%M:%S",
     filename=f"{lnproxy_home}/proxy.log",
     filemode="w",
 )
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
-formatter = logging.Formatter("%(name)6s | %(levelname)7s | %(message)s")
+formatter = logging.Formatter(
+    fmt="%(asctime)s.%(msecs)03d | %(name)6s | %(levelname)7s | %(message)s",
+    datefmt="%H:%M:%S",
+)
 console.setFormatter(formatter)
 logging.getLogger("").addHandler(console)
 

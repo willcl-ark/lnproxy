@@ -7,6 +7,7 @@ Arguments:
     NODE_ID     an int (1, 2, 3) determining node number this proxy will run for
 """
 from docopt import docopt
+from itertools import count
 import logging
 import socket
 import struct
@@ -28,6 +29,7 @@ MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 args = {}
+CONNECTION_COUNTER = count()
 
 
 async def unlink_socket(sock):
@@ -41,7 +43,7 @@ async def unlink_socket(sock):
             raise
 
 
-async def proxy(read_stream, write_stream, initiator, direction):
+async def proxy(read_stream, write_stream, initiator, direction, conn_id, _logger):
     """Proxy lightning message traffic from one stream to another.
     Handle and parse certain lightning messages.
     """
@@ -56,7 +58,9 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 # pass full 50 / 66 B messages transparently
                 # TODO: mock these
                 req_len = hs_pkt_size[initiator][i]
-                logger.info(f"{direction:<8s} | handshake message {i + 1}")
+                _logger.info(
+                    f"{conn_id:>3d} {direction:<8s} | handshake message {i + 1}"
+                )
                 message = b""
                 while len(message) < req_len:
                     message += await read_stream.receive_some(req_len - len(message))
@@ -66,8 +70,8 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 header = await read_stream.receive_some(MSG_HEADER)
 
                 if len(header) != MSG_HEADER:
-                    logger.warning(
-                        f"{direction} could not get full header length: 18 != "
+                    _logger.warning(
+                        f"{conn_id:>3d} {direction:<8s} | could not get full header length: 18 != "
                         f"{len(header)}"
                     )
                     break
@@ -84,7 +88,7 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 body = await read_stream.receive_some(body_len)
 
                 # parse the message
-                header, body = ln_msg.parse(header, body, direction)
+                header, body = ln_msg.parse(header, body, direction, conn_id, _logger)
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await read_stream.receive_some(MSG_MAC)
@@ -94,13 +98,13 @@ async def proxy(read_stream, write_stream, initiator, direction):
                 message = header + body + body_mac
 
             # send to remote
-            # logger.debug(f"Sending message {direction:<15s} | {len(message)}")
+            # _logger.debug(f"Sending message {direction:<15s} | {len(message)}")
             await write_stream.send_all(message)
 
             # increment handshake counter
             i += 1
         except Exception:
-            logger.exception("Exception inside proxy.proxy")
+            _logger.exception("Exception inside proxy.proxy")
             return
 
 
@@ -109,16 +113,25 @@ async def socket_handler_local(local_stream):
     Makes outbound connection to proxy traffic with.
     :arg local_stream: a trio.SocketStream for the listening socket
     """
+    ident = next(CONNECTION_COUNTER)
+    conn_logger = logging.getLogger(f"CONN{ident:>2d}")
+    fh = logging.FileHandler(f"lnproxy{config.my_node}_conn_{ident}")
+    conn_logger.addHandler(fh)
+
     # When we receive a new connection from a local node, open a new connection to
     # the remote node & proxy the streams
-    logger.info(f"Got new inbound connection from local node.")
+    logger.info(f"Got new inbound connection ID: {ident} from local node.")
     remote_stream = await trio.open_unix_socket(config.remote_node_addr)
-    logger.info(f"Proxying local inbound connection to remote node")
+    logger.info(f"Proxying local inbound connection {ident} to remote node")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy, local_stream, remote_stream, True, "outbound")
-            nursery.start_soon(proxy, remote_stream, local_stream, False, "inbound")
+            nursery.start_soon(
+                proxy, local_stream, remote_stream, True, "outbound", ident, conn_logger
+            )
+            nursery.start_soon(
+                proxy, remote_stream, local_stream, False, "inbound", ident, conn_logger
+            )
     except Exception:
         logger.exception(f"Local socket_handler: crashed")
     finally:
@@ -129,16 +142,31 @@ async def socket_handler_remote(remote_stream):
     """Handles a listening socket for remote connections.
     :arg remote_stream: a trio.SocketStream for the listening socket
     """
+    ident = next(CONNECTION_COUNTER)
+    conn_logger = logging.getLogger(f"CONN{ident:>2d}")
+    fh = logging.FileHandler(f"lnproxy{config.my_node}_conn_{ident}")
+    conn_logger.addHandler(fh)
+
     # When we receive a new connection from a remote node, open a new connection to
     # the local node & proxy the streams
-    logger.info(f"Got new inbound connection from remote node.")
+    logger.info(f"Got new inbound connection ID: {ident} from remote node.")
     local_stream = await trio.open_unix_socket(config.local_node_addr)
-    logger.info(f"Proxying remote inbound connection to to local node...")
+    logger.info(f"Proxying remote inbound connection {ident} to to local node...")
     try:
         # We run both proxies in a nursery as stream.send_all() can be blocking
         async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy, local_stream, remote_stream, False, "outbound")
-            nursery.start_soon(proxy, remote_stream, local_stream, True, "inbound")
+            nursery.start_soon(
+                proxy,
+                local_stream,
+                remote_stream,
+                False,
+                "outbound",
+                ident,
+                conn_logger,
+            )
+            nursery.start_soon(
+                proxy, remote_stream, local_stream, True, "inbound", ident, conn_logger
+            )
     except Exception:
         logger.exception(f"Remote socket_handler: crashed")
     finally:
