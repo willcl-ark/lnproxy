@@ -14,7 +14,7 @@ rpc = None
 def init_nodes():
     global rpc
     config.my_node_dir = config.NODE_DIR[config.my_node]
-    rpc = LightningRpc(f"{config.my_node_dir}/lightning-rpc")
+    rpc = LightningRpc(f"{config.my_node_dir}/{config.network}/lightning-rpc")
     rpc.logger = logging.getLogger(f"{'LNRPC':<6s}")
     # TODO: remove when not testing
     # this tests the RPC connection
@@ -25,11 +25,11 @@ def init_nodes():
         except FileNotFoundError:
             rpc.logger.error(
                 f"Can't find node {config.my_node}'s lightning-rpc at "
-                f"{config.my_node_dir}/lightning-rpc. Trying again in 2 seconds"
+                f"{config.my_node_dir}/{config.network}/lightning-rpc. Trying again in 2 seconds"
             )
             time.sleep(2)
     next_node_dir = config.NODE_DIR[(config.my_node + 1) % 3]
-    rpc2 = LightningRpc(f"{next_node_dir}/lightning-rpc")
+    rpc2 = LightningRpc(f"{next_node_dir}/{config.network}/lightning-rpc")
     config.next_node_pubkey = rpc2.getinfo()["id"]
 
 

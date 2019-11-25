@@ -17,7 +17,7 @@ nodes = [0, 1, 2]
 
 def get_privkey(_node):
     ln_dir = config.NODE_DIR[_node]
-    hsm_secret = open(f"{ln_dir}/hsm_secret", "rb").read()
+    hsm_secret = open(f"{ln_dir}/{config.network}/hsm_secret", "rb").read()
 
     # To generate the node private key, apply hkdf to string b"nodeid"
     salt = bytes([0]) or b"\x00"
@@ -43,7 +43,7 @@ def get_privkey(_node):
         key = Hkdf(salt, hsm_secret, hash=hashlib.sha256).expand(b"nodeid")
 
     # Check public key derived from the private key against node id
-    ln = LightningRpc(f"{ln_dir}/lightning-rpc")
+    ln = LightningRpc(f"{ln_dir}/{config.network}/lightning-rpc")
     if not privkey.pubkey.serialize().hex() == ln.getinfo()["id"]:
         print(
             f"Warning, valid secp265k1 derived pubkey doesn't appear to match "

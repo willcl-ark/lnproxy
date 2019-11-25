@@ -76,6 +76,7 @@ my_node: int = 0
 my_node_dir: str = ""
 my_node_pubkey: str = ""
 next_node_pubkey: str = ""
+network = "regtest"
 remote_listen_SOCK: str = ""
 local_listen_SOCK: str = ""
 local_node_addr: str = ""

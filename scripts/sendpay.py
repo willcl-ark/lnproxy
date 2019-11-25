@@ -12,9 +12,9 @@ to rpc3.
 """
 
 
-rpc1 = LightningRpc("/tmp/l1-regtest/lightning-rpc")
-rpc2 = LightningRpc("/tmp/l2-regtest/lightning-rpc")
-rpc3 = LightningRpc("/tmp/l3-regtest/lightning-rpc")
+rpc1 = LightningRpc("/tmp/l1-regtest/regtest/lightning-rpc")
+rpc2 = LightningRpc("/tmp/l2-regtest/regtest/lightning-rpc")
+rpc3 = LightningRpc("/tmp/l3-regtest/regtest/lightning-rpc")
 
 
 # rpc3 adds an invoice and returns the decoded invoice
