@@ -27,6 +27,8 @@ uint8(x)                if x < 0xfd
 import logging
 from pathlib import Path
 
+import trio
+
 # BigSize struct formatting codes
 be_u8: str = ">B"
 be_u16: str = ">H"
@@ -57,6 +59,10 @@ formatter = logging.Formatter(
 console.setFormatter(formatter)
 logging.getLogger("").addHandler(console)
 
+# set up memory channels between trio and mesh connections
+# shared between all socket connections
+send_to_mesh, receive_from_server = trio.open_memory_channel(50)
+send_to_server, receive_from_mesh = trio.open_memory_channel(50)
 
 #####################################
 # TODO: Hardcodes to get rid of later

@@ -43,7 +43,7 @@ except RpcError:
 
 # rpc1 does a sendpay to rpc2
 try:
-    send = rpc1.sendpay(
+    send_to_server = rpc1.sendpay(
         route=route,
         payment_hash=inv["payment_hash"],
         description=uuid4().hex,

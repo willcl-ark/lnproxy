@@ -139,9 +139,7 @@ def parse_update_add_htlc(
         return modified_payload
 
 
-def parse(
-    header: bytes, body: bytes, direction: str, conn_id: int, _logger
-) -> Tuple[bytes, bytes]:
+def parse(header: bytes, body: bytes) -> Tuple[bytes, bytes]:
     """Parse a lightning message, optionally modify and then return it
     """
     # handle empty messages gracefully
@@ -154,24 +152,20 @@ def parse(
 
     # filter unknown codes and return without processing
     if msg_code not in codes.keys():
-        _logger.warning(
-            f"CONN: {conn_id:<3d} | Message code not found in ln_msg.codes.keys(): {msg_code}"
-        )
+        logger.warning(f"Message code not found in ln_msg.codes.keys(): {msg_code}")
         return header, body
 
-    _logger.info(
-        f"{conn_id:>3d} {direction:<8s} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B"
-    )
+    logger.info(f"{codes.get(msg_code):<27s} | {len(msg_payload):>4d}B")
 
-    # handle htlc_add_update
-    if msg_code == config.ADD_UPDATE_HTLC:
-        body = msg_type + parse_update_add_htlc(
-            msg_payload, direction, conn_id, _logger
-        )
-        # recompute header based on length of msg without onion
-        _header = b""
-        _header += struct.pack(">H", len(body))
-        _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
-        return _header, body
+    # # handle htlc_add_update
+    # if msg_code == config.ADD_UPDATE_HTLC:
+    #     body = msg_type + parse_update_add_htlc(
+    #         msg_payload, direction, conn_id, _logger
+    #     )
+    #     # recompute header based on length of msg without onion
+    #     _header = b""
+    #     _header += struct.pack(">H", len(body))
+    #     _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
+    #     return _header, body
 
     return header, msg_type + msg_payload
