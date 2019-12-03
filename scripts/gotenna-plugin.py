@@ -6,6 +6,7 @@ from lnproxy.proxy_final import main
 import lnproxy.config as config
 import threading
 import trio
+import time
 
 plugin = Plugin()
 rpc_interface = None
@@ -31,11 +32,11 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
     config.socket_queue.put(_conn)
     print("Put the conn onto the socket_queue")
     # instruct rpc to connect via that server
-    # rpc_interface.connect(pubkey, f"/tmp/{listen_addr}")
-    return
+    time.sleep(1)
+    return rpc_interface.connect(pubkey, f"/tmp/{listen_addr}")
 
 
-plugin.add_method(name="proxy-connect", func=proxy_connect, background=True)
+plugin.add_method(name="proxy-connect", func=proxy_connect, background=False)
 
 
 @plugin.init()

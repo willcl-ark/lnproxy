@@ -25,9 +25,9 @@ uint8(x)                if x < 0xfd
 """
 
 import logging
+import queue
 from pathlib import Path
 
-import trio
 
 # BigSize struct formatting codes
 be_u8: str = ">B"
@@ -61,8 +61,8 @@ logging.getLogger("").addHandler(console)
 
 # set up memory channels between trio and mesh connections
 # shared between all socket connections
-send_to_mesh, receive_from_server = trio.open_memory_channel(50)
-send_to_server, receive_from_mesh = trio.open_memory_channel(50)
+# send_to_mesh, receive_from_server = trio.open_memory_channel(50)
+# send_to_server, receive_from_mesh = trio.open_memory_channel(50)
 
 #####################################
 # TODO: Hardcodes to get rid of later
@@ -88,3 +88,5 @@ local_listen_SOCK: str = ""
 local_node_addr: str = ""
 remote_node_addr: str = ""
 #####################################
+
+socket_queue = queue.Queue()
