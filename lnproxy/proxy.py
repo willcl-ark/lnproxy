@@ -1,10 +1,19 @@
+import contextvars
+import itertools
 import socket
 
 import trio
 
-
 # TODO: remove hack
 addr = ""
+
+cont = itertools.count()
+request_info = contextvars.ContextVar("request_info")
+
+
+def log(msg):
+    request_tag = request_info.get()
+    print(f"Conn {request_tag}: {msg}")
 
 
 async def unlink_socket(sock):
@@ -26,7 +35,7 @@ async def proxy_stream(read_stream, write_stream):
             data = await read_stream.receive_some()
             await write_stream.send_all(data)
         except trio.BrokenResourceError:
-            print("Remote closed the connection")
+            log("Remote closed the connection")
             return
 
 
@@ -35,16 +44,18 @@ async def handle_connection(inbound_stream):
     """
     # TODO: remove hack to receive addr from serve()
     global addr
+    global cont
+    request_info.set(next(cont))
     outbound_stream = await trio.open_unix_socket(addr)
-    print(f"Proxying connection between {inbound_stream} and {outbound_stream}")
+    log(f"Proxying connection between {inbound_stream} and {outbound_stream}")
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(proxy_stream, outbound_stream, inbound_stream)
             nursery.start_soon(proxy_stream, inbound_stream, outbound_stream)
     except ValueError as e:
-        print(f"Error from handle_connection():\n{e}")
+        log(f"Error from handle_connection():\n{e}")
     except trio.ClosedResourceError as e:
-        print(f"Attempted to use resource after we closed:\n{e}")
+        log(f"Attempted to use resource after we closed:\n{e}")
     finally:
         await inbound_stream.aclose()
         await outbound_stream.aclose()

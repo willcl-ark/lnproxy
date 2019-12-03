@@ -53,7 +53,7 @@ def init(options, configuration, plugin):
     trio.from_thread.run_sync(
         nursery.start_soon,
         serve,
-        f"/tmp/{node_info['id']}-in",
+        f"/tmp/{node_info['id']}",
         node_info["binding"][0]["socket"],
     )
     plugin.log("goTenna plugin initialized", level="info")
