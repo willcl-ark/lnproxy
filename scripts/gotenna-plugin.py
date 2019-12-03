@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
+import threading
+import time
 from os.path import join
 from uuid import uuid4
-from lightning import Plugin, LightningRpc
-from lnproxy.proxy_final import main
-import lnproxy.config as config
-import threading
+
 import trio
-import time
+from lightning import LightningRpc, Plugin
+
+import lnproxy.config as config
+from lnproxy.proxy import main
 
 plugin = Plugin()
 rpc_interface = None
 trio_thread = threading.Thread(target=trio.run, args=[main])
+trio_token = None
 
 
 class Conn:
@@ -43,6 +46,7 @@ plugin.add_method(name="proxy-connect", func=proxy_connect, background=False)
 def init(options, configuration, plugin):
     global rpc_interface
     global trio_thread
+    global trio_token
 
     # configure rpc interface
     basedir = configuration["lightning-dir"]
@@ -61,6 +65,8 @@ def init(options, configuration, plugin):
 
     # start the main trio server thread
     trio_thread.start()
+    # the trio_token allows you to send jobs into the trio process
+    trio_token = trio.hazmat.TrioToken
     plugin.log("goTenna plugin initialized", level="info")
 
 
