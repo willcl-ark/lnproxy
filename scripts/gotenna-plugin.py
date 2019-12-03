@@ -17,11 +17,13 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
     global nursery
 
     print(f"pubkey: {pubkey}, outbound_addr: {outbound_addr}")
-    # Generate a random address to listen on (with Unix Socket)
+    # Generate a random address to listen on (with Unix Socket).
     listen_addr = uuid4().hex
     print(f"listen_addr: {listen_addr}")
 
-    # Setup the listening server
+    # Setup the listening server socket for C-Lightning to connect through.
+    # Again we wrap in trio.from_thread_run_sync() to start the server calling back to
+    # the global nursery.
     trio.from_thread.run_sync(
         nursery.start_soon, serve, f"/tmp/{listen_addr}", outbound_addr,
     )
@@ -30,7 +32,7 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
         level="info",
     )
 
-    # instruct rpc to connect via that server
+    # Instruct C-Lightning RPC to connect to remote via the socket.
     time.sleep(1)
     return plugin.rpc.connect(pubkey, f"/tmp/{listen_addr}")
 
