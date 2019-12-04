@@ -25,7 +25,7 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
     # Again we wrap in trio.from_thread_run_sync() to start the server calling back to
     # the global nursery.
     trio.from_thread.run_sync(
-        nursery.start_soon, serve, f"/tmp/{listen_addr}", outbound_addr,
+        nursery.start_soon, serve, f"/tmp/{listen_addr}", outbound_addr, True
     )
     plugin.log(
         f"Now listening on {listen_addr}, ready to proxy out to {outbound_addr}",
@@ -55,6 +55,7 @@ def init(options, configuration, plugin):
         serve,
         f"/tmp/{node_info['id']}",
         node_info["binding"][0]["socket"],
+        False,
     )
     plugin.log("goTenna plugin initialized", level="info")
 

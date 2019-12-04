@@ -25,7 +25,6 @@ uint8(x)                if x < 0xfd
 """
 
 import logging
-import queue
 from pathlib import Path
 
 
@@ -88,5 +87,3 @@ local_listen_SOCK: str = ""
 local_node_addr: str = ""
 remote_node_addr: str = ""
 #####################################
-
-socket_queue = queue.Queue()

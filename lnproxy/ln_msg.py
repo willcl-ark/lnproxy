@@ -1,12 +1,9 @@
-import logging
 import struct
 from typing import Tuple
 
 import lnproxy.config as config
 import lnproxy.onion as onion
 import lnproxy.util as util
-
-logger = logging.getLogger(f"{'MSG':<6s}")
 
 
 codes = {
@@ -48,7 +45,7 @@ def deserialize_type(msg_type: bytes) -> int:
 
 
 def deserialize_htlc_payload(
-    payload: bytes, direction: str, conn_id: int, _logger
+    payload: bytes, _logger
 ) -> Tuple[bytes, int, int, bytes, int]:
     channel_id = struct.unpack(config.le_32b, payload[0:32])[0]
     _id = struct.unpack(config.be_u64, payload[32:40])[0]
@@ -56,27 +53,25 @@ def deserialize_htlc_payload(
     payment_hash = struct.unpack(config.le_32b, payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, payload[80:84])[0]
 
-    _logger.info(f"{conn_id:>3d} {direction:<8s} | channel_id: {channel_id.hex()}")
-    _logger.info(f"{conn_id:>3d} {direction:<8s} | id: {_id}")
-    _logger.info(f"{conn_id:>3d} {direction:<8s} | amount_msat: {amount_msat}")
-    _logger.info(f"{conn_id:>3d} {direction:<8s} | payment_hash: {payment_hash.hex()}")
-    _logger.info(f"{conn_id:>3d} {direction:<8s} | cltv_expiry: {cltv_expiry}")
+    _logger.info(f"channel_id: {channel_id.hex()}")
+    _logger.info(f"id: {_id}")
+    _logger.info(f"amount_msat: {amount_msat}")
+    _logger.info(f"payment_hash: {payment_hash.hex()}")
+    _logger.info(f"cltv_expiry: {cltv_expiry}")
 
     return channel_id, _id, amount_msat, payment_hash, cltv_expiry
 
 
-def parse_update_add_htlc(
-    orig_payload: bytes, direction: str, conn_id: int, _logger
-) -> bytes:
+def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool, logger) -> bytes:
     """Parse an update_add_htlc message
     """
     # decode the htlc
     channel_id, _id, amount_msat, payment_hash, cltv_expiry = deserialize_htlc_payload(
-        orig_payload, direction, conn_id, _logger
+        orig_payload, logger
     )
 
     # htlc from local lightning node:
-    if direction == "outbound":
+    if to_mesh:
         gen_onion = struct.unpack(config.le_onion, orig_payload[84:1450])[0]
         # priv keys hardcoded in A -> B -> C direction only
         priv_keys = onion.get_regtest_privkeys(
@@ -89,21 +84,19 @@ def parse_update_add_htlc(
         orig_payloads, orig_nexts = onion.decode_onion(
             gen_onion, priv_keys, payment_hash.hex(),
         )
-        _logger.debug(f"Original payloads:{orig_payloads}")
+        logger(f"DEBUG: Original payloads:{orig_payloads}")
 
         # chop off the onion before sending
-        _logger.info(
-            f"{conn_id:>3d} {direction:<8s} | Chopping off onion before transmission"
-        )
+        logger(f"INFO: Chopping off onion before transmission")
         return orig_payload[0:84]
 
     # htlc from external lightning node
-    if direction == "inbound":
+    else:
         # generate a new onion as there won't be one
-        _logger.info(f"{conn_id:>3d} {direction:<8s} | Generating new onion")
+        logger(f"INFO: Generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            _logger.info("We're the final hop!")
+            logger("INFO: We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
@@ -117,7 +110,7 @@ def parse_update_add_htlc(
             # else generate an onion with ou5r pk as first_hop and next hop pk as
             # second_pubkey
             # TODO: calculate: also subtract config.CLTV_d from cltv_expiry
-            _logger.info("We're not the final hop...")
+            logger("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
                 first_pubkey=config.my_node_pubkey,
                 next_pubkey=config.next_node_pubkey,
@@ -131,7 +124,7 @@ def parse_update_add_htlc(
         orig_payloads, orig_nexts = onion.decode_onion(
             generated_onion, priv_keys, payment_hash.hex(),
         )
-        _logger.debug(f"Generated payloads:{orig_payloads}")
+        logger(f"DEBUG: Generated payloads:{orig_payloads}")
 
         # add the new onion to original payload
         modified_payload = orig_payload
@@ -139,7 +132,7 @@ def parse_update_add_htlc(
         return modified_payload
 
 
-def parse(header: bytes, body: bytes) -> Tuple[bytes, bytes]:
+def parse(header: bytes, body: bytes, to_mesh: bool, logger) -> Tuple[bytes, bytes]:
     """Parse a lightning message, optionally modify and then return it
     """
     # handle empty messages gracefully
@@ -152,20 +145,18 @@ def parse(header: bytes, body: bytes) -> Tuple[bytes, bytes]:
 
     # filter unknown codes and return without processing
     if msg_code not in codes.keys():
-        logger.warning(f"Message code not found in ln_msg.codes.keys(): {msg_code}")
+        logger(f"WARN: Message code not found in ln_msg.codes.keys(): {msg_code}")
         return header, body
 
-    logger.info(f"{codes.get(msg_code):<27s} | {len(msg_payload):>4d}B")
+    logger(f"INFO: {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B")
 
-    # # handle htlc_add_update
-    # if msg_code == config.ADD_UPDATE_HTLC:
-    #     body = msg_type + parse_update_add_htlc(
-    #         msg_payload, direction, conn_id, _logger
-    #     )
-    #     # recompute header based on length of msg without onion
-    #     _header = b""
-    #     _header += struct.pack(">H", len(body))
-    #     _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
-    #     return _header, body
+    # handle htlc_add_update
+    if msg_code == config.ADD_UPDATE_HTLC:
+        body = msg_type + parse_update_add_htlc(msg_payload, to_mesh, logger)
+        # recompute header based on length of msg without onion
+        _header = b""
+        _header += struct.pack(">H", len(body))
+        _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
+        return _header, body
 
-    return header, msg_type + msg_payload
+    return header, body
