@@ -6,6 +6,7 @@ import trio
 
 from lightning import Plugin
 from lnproxy.proxy import serve
+import lnproxy.config
 
 plugin = Plugin()
 nursery = None
@@ -43,6 +44,7 @@ plugin.add_method(name="proxy-connect", func=proxy_connect, background=False)
 @plugin.init()
 def init(options, configuration, plugin):
     global nursery
+    lnproxy.config.rpc = plugin.rpc
 
     # Get the local node info
     node_info = plugin.rpc.getinfo()

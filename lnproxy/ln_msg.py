@@ -53,11 +53,11 @@ def deserialize_htlc_payload(
     payment_hash = struct.unpack(config.le_32b, payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, payload[80:84])[0]
 
-    _logger.info(f"channel_id: {channel_id.hex()}")
-    _logger.info(f"id: {_id}")
-    _logger.info(f"amount_msat: {amount_msat}")
-    _logger.info(f"payment_hash: {payment_hash.hex()}")
-    _logger.info(f"cltv_expiry: {cltv_expiry}")
+    _logger(f"channel_id: {channel_id.hex()}")
+    _logger(f"id: {_id}")
+    _logger(f"amount_msat: {amount_msat}")
+    _logger(f"payment_hash: {payment_hash.hex()}")
+    _logger(f"cltv_expiry: {cltv_expiry}")
 
     return channel_id, _id, amount_msat, payment_hash, cltv_expiry
 
@@ -66,25 +66,26 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool, logger) -> bytes:
     """Parse an update_add_htlc message
     """
     # decode the htlc
+    # TODO: remove [0:84] from here when we don't transmit onions!
     channel_id, _id, amount_msat, payment_hash, cltv_expiry = deserialize_htlc_payload(
-        orig_payload, logger
+        orig_payload[0:84], logger
     )
 
     # htlc from local lightning node:
     if to_mesh:
-        gen_onion = struct.unpack(config.le_onion, orig_payload[84:1450])[0]
-        # priv keys hardcoded in A -> B -> C direction only
-        priv_keys = onion.get_regtest_privkeys(
-            [
-                (config.my_node + 1) % 3,
-                (config.my_node + 2) % 3,
-                (config.my_node + 3) % 3,
-            ]
-        )
-        orig_payloads, orig_nexts = onion.decode_onion(
-            gen_onion, priv_keys, payment_hash.hex(),
-        )
-        logger(f"DEBUG: Original payloads:{orig_payloads}")
+        # gen_onion = struct.unpack(config.le_onion, orig_payload[84:1450])[0]
+        # # priv keys hardcoded in A -> B -> C direction only
+        # priv_keys = onion.get_regtest_privkeys(
+        #     [
+        #         (config.my_node + 1) % 3,
+        #         (config.my_node + 2) % 3,
+        #         (config.my_node + 3) % 3,
+        #     ]
+        # )
+        # orig_payloads, orig_nexts = onion.decode_onion(
+        #     gen_onion, priv_keys, payment_hash.hex(),
+        # )
+        # logger(f"DEBUG: Original payloads:{orig_payloads}")
 
         # chop off the onion before sending
         logger(f"INFO: Chopping off onion before transmission")
@@ -99,37 +100,36 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool, logger) -> bytes:
             logger("INFO: We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
-                first_pubkey=config.my_node_pubkey,
+                my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=None,
                 amount_msat=amount_msat,
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry,
             )
-            priv_keys = onion.get_regtest_privkeys([config.my_node])
+            # priv_keys = onion.get_regtest_privkeys([config.my_node])
         else:
             # else generate an onion with ou5r pk as first_hop and next hop pk as
             # second_pubkey
             # TODO: calculate: also subtract config.CLTV_d from cltv_expiry
             logger("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
-                first_pubkey=config.my_node_pubkey,
+                my_pubkey=config.my_node_pubkey,
                 next_pubkey=config.next_node_pubkey,
                 amount_msat=amount_msat,
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-            priv_keys = onion.get_regtest_privkeys(
-                [config.my_node, (config.my_node + 1) % 3]
-            )
-        orig_payloads, orig_nexts = onion.decode_onion(
-            generated_onion, priv_keys, payment_hash.hex(),
-        )
-        logger(f"DEBUG: Generated payloads:{orig_payloads}")
+            logger.debug(f"INFO: Generated onion\n{generated_onion}")
+            # priv_keys = onion.get_regtest_privkeys(
+            #     [config.my_node, (config.my_node + 1) % 3]
+            # )
+        # orig_payloads, orig_nexts = onion.decode_onion(
+        #     generated_onion, priv_keys, payment_hash.hex(),
+        # )
+        # logger(f"DEBUG: Generated payloads:{orig_payloads}")
 
         # add the new onion to original payload
-        modified_payload = orig_payload
-        modified_payload += generated_onion
-        return modified_payload
+        return orig_payload + generated_onion
 
 
 def parse(header: bytes, body: bytes, to_mesh: bool, logger) -> Tuple[bytes, bytes]:

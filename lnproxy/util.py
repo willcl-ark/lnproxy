@@ -1,9 +1,10 @@
 import logging
 import pathlib
 import struct
-import time
 
-from lightning import LightningRpc
+# import time
+
+# from lightning import LightningRpc
 
 import lnproxy.config as config
 
@@ -11,30 +12,30 @@ logger = logging.getLogger(f"{'UTIL':<6s}")
 rpc = None
 
 
-def init_nodes():
-    global rpc
-    config.my_node_dir = config.NODE_DIR[config.my_node]
-    rpc = LightningRpc(f"{config.my_node_dir}/{config.network}/lightning-rpc")
-    rpc.logger = logging.getLogger(f"{'LNRPC':<6s}")
-    # TODO: remove when not testing
-    # this tests the RPC connection
-    while True:
-        try:
-            config.my_node_pubkey = rpc.getinfo()["id"]
-            break
-        except FileNotFoundError:
-            rpc.logger.error(
-                f"Can't find node {config.my_node}'s lightning-rpc at "
-                f"{config.my_node_dir}/{config.network}/lightning-rpc. Trying again in 2 seconds"
-            )
-            time.sleep(2)
-    next_node_dir = config.NODE_DIR[(config.my_node + 1) % 3]
-    rpc2 = LightningRpc(f"{next_node_dir}/{config.network}/lightning-rpc")
-    config.next_node_pubkey = rpc2.getinfo()["id"]
+# def init_nodes():
+#     global rpc
+#     config.my_node_dir = config.NODE_DIR[config.my_node]
+#     rpc = LightningRpc(f"{config.my_node_dir}/{config.network}/lightning-rpc")
+#     rpc.logger = logging.getLogger(f"{'LNRPC':<6s}")
+#     # TODO: remove when not testing
+#     # this tests the RPC connection
+#     while True:
+#         try:
+#             config.my_node_pubkey = rpc.getinfo()["id"]
+#             break
+#         except FileNotFoundError:
+#             rpc.logger.error(
+#                 f"Can't find node {config.my_node}'s lightning-rpc at "
+#                 f"{config.my_node_dir}/{config.network}/lightning-rpc. Trying again in 2 seconds"
+#             )
+#             time.sleep(2)
+#     next_node_dir = config.NODE_DIR[(config.my_node + 1) % 3]
+#     rpc2 = LightningRpc(f"{next_node_dir}/{config.network}/lightning-rpc")
+#     config.next_node_pubkey = rpc2.getinfo()["id"]
 
 
 def get_my_payment_hashes() -> list:
-    all_invoices = rpc.listinvoices()["invoices"]
+    all_invoices = config.rpc.listinvoices()["invoices"]
     inv_hashes = []
     for invoice in all_invoices:
         inv_hashes.append(invoice["payment_hash"])
@@ -46,7 +47,7 @@ def get_next_channel_id() -> bytes:
     """
     block_height = tx_index = output_index = ""
     # get a list of my channels
-    my_channels = rpc.listfunds()["channels"]
+    my_channels = config.rpc.listfunds()["channels"]
     for channel in my_channels:
         if channel["peer_id"] == config.next_node_pubkey:
             block_height, tx_index, output_index = channel["short_channel_id"].split(

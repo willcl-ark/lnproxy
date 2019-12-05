@@ -71,6 +71,7 @@ NODE_DIR = {
     2: "/tmp/l3-regtest",
 }
 ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+rpc = None
 ADD_UPDATE_HTLC: int = 128
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
