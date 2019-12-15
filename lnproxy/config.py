@@ -35,22 +35,7 @@ be_u64: str = ">Q"
 le_32b: str = "<32s"
 le_onion: str = "<1366s"
 
-home = str(Path.home())
-lnproxy_home = f"{home}/.lnproxy"
-Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
-
-
-#####################################
-
-# TODO: Hardcodes to get rid of later
-NODE_DIR = {
-    0: "/tmp/l1-regtest",
-    1: "/tmp/l2-regtest",
-    2: "/tmp/l3-regtest",
-}
-ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
-rpc = None
-nursery = None
+# Lightning message size constants
 ADD_UPDATE_HTLC: int = 128
 MAX_PKT_LEN: int = 65569
 MSG_LEN: int = 2
@@ -59,22 +44,26 @@ MSG_HEADER: int = MSG_LEN + MSG_LEN_MAC
 MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
+
+# System-agnostic home path generator
+home = str(Path.home())
+lnproxy_home = f"{home}/.lnproxy"
+Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
+
+# Onion tool
+ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+
+# Plugin RPC
+rpc = None
+
+# Trio shared nursery
+nursery = None
+
+# Sockets opened by the proxy
+sockets = []
+
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
 #   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
 C_FEE: int = 2
 CLTV_d: int = 6
-
-#####################################
-
-my_node: int = 0
-my_node_dir: str = ""
-my_node_pubkey: str = ""
-next_node_pubkey: str = ""
-network = "regtest"
-remote_listen_SOCK: str = ""
-local_listen_SOCK: str = ""
-local_node_addr: str = ""
-remote_node_addr: str = ""
-
-#####################################

@@ -17,7 +17,8 @@ def decode_hop_data(hop_data: bytes, layer=0):
     amt_to_forward = struct.unpack_from(config.be_u64, hop_data, 8 + off)[0]
     outgoing_cltv_value = struct.unpack_from(config.be_u32, hop_data, 16 + off)[0]
     padding = struct.unpack_from("12B", hop_data, 20 + off)[0]
-    util.log(
+    print(
+        "DEBUG: \n"
         f"Decoded payload layer {layer}:\n"
         f"\tShort channel id: {short_channel_id}\n"
         f"\tAmt to forward: {amt_to_forward}\n"
@@ -56,16 +57,22 @@ def generate_new(
     'final hop'
     """
     print(
-        f"my_pubkey: {my_pubkey}, amount_msat: {amount_msat}, payment_hash: {payment_hash}, cltv_expiry: {cltv_expiry}"
+        "DEBUG: "
+        f"my_pubkey: {my_pubkey}, amount_msat: {amount_msat}, "
+        f"payment_hash: {payment_hash.hex()}, "
+        f"cltv_expiry: {cltv_expiry}"
     )
     # is there is a next_pubkey, we are't the final hop, so add a second_hop!
     if next_pubkey:
-        first_hop_id = config.rpc.getinfo()["id"]
-        first_hop_data = encode_hop_data(first_hop_id, amount_msat, cltv_expiry).hex()
+        first_hop_chan_id = util.get_short_chan_id(my_pubkey, next_pubkey)
+        first_hop_data = encode_hop_data(
+            first_hop_chan_id, amount_msat, cltv_expiry
+        ).hex()
         # Bolt #7: MUST NOT include short_channel_id for the final node.
         next_hop_id = struct.pack(config.be_u64, 0)
         next_hop_data = encode_hop_data(next_hop_id, amount_msat, cltv_expiry).hex()
         print(
+            "DEBUG: "
             f"Generating new onion using command:\n'devtools/onion generate "
             f"{my_pubkey}/{first_hop_data} {next_pubkey}/{next_hop_data} --assoc-data "
             f"{payment_hash.hex()}'"
@@ -99,9 +106,9 @@ def generate_new(
     gen_onion = onion_tool.stdout.decode()
 
     if onion_tool.stdout == b"":
-        print(f"Error from onion tool: {onion_tool.stdout.decode()}")
-    print(f"Created onion: type: {type(gen_onion)}, data: {gen_onion}")
+        print(f"ERROR: from onion tool: {onion_tool.stdout.decode()}")
+    print(f"DEBUG: Created onion: type: {type(gen_onion)}, data: {gen_onion}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
-    print("Generated onion!")
-    print(f"Onion hex:\n{gen_onion_bytes.hex()}")
+    print("INFO: Generated onion!")
+    print(f"DEBUG: Onion hex:\n{gen_onion_bytes.hex()}")
     return gen_onion_bytes

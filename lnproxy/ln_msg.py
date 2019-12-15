@@ -1,4 +1,6 @@
+import json
 import struct
+import subprocess
 from typing import Tuple
 
 import lnproxy.config as config
@@ -68,7 +70,6 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
     """Parse an update_add_htlc message
     """
     # decode the htlc
-    # TODO: remove [0:84] slice when we don't transmit onions?
     channel_id, _id, amount_msat, payment_hash, cltv_expiry = deserialize_htlc_payload(
         orig_payload[0:84], logger
     )
@@ -76,13 +77,13 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
     # outbound htlc from local lightning node:
     if initiator:
         # chop off the onion before sending
-        logger(f"INFO: Chopping off onion before transmission")
+        logger(f"INFO: We are htlc initiator; chopping off onion before transmission")
         return orig_payload[0:84]
 
     # htlc from external lightning node
     else:
         # generate a new onion as there won't be one
-        logger(f"INFO: Generating new onion")
+        logger(f"INFO: We are htlc recipient; generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
             logger("INFO: We're the final hop!")
@@ -95,17 +96,30 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
                 cltv_expiry=cltv_expiry,
             )
         else:
-            # else generate an onion with ou5r pk as first_hop and next hop pk as
+            # else generate an onion with our pk as first_hop and next hop pk as
             # second_pubkey
+
+            # first get next pubkey
+            # TODO: remove hard-code!
+            next_pubkey = (
+                subprocess.run(
+                    "/Users/will/src/lightning/cli/lightning-cli "
+                    "--lightning-dir=/tmp/l3-regtest getinfo | jq .id",
+                    shell=True,
+                    capture_output=True,
+                )
+                .stdout.decode()
+                .strip('"\n')
+            )
             logger("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
-                my_pubkey=config.my_node_pubkey,
-                next_pubkey=config.next_node_pubkey,
+                my_pubkey=config.rpc.getinfo()["id"],
+                next_pubkey=next_pubkey,
                 amount_msat=amount_msat,
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-        logger.debug(f"INFO: Generated onion\n{generated_onion}")
+        logger(f"INFO: Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
         return orig_payload + generated_onion
