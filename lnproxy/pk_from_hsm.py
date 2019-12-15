@@ -1,9 +1,10 @@
 """
 Reworked from fiatjaf's gist:
 https://gist.github.com/fiatjaf/e3232bef6d59263b439b97b6d04d1bcc
+
+Derive node private key from the hsm_secret
 """
 
-# derive node private key from the hsm_secret
 import hashlib
 
 import secp256k1
