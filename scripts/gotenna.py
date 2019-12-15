@@ -17,24 +17,24 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
     """
     global listen_addr
 
-    print(f"pubkey: {pubkey}, outbound_addr: {outbound_addr}")
+    print(f"INFO: pubkey: {pubkey}, outbound_addr: {outbound_addr}")
     # Generate a random address to listen on (with Unix Socket).
     listen_addr = f"/tmp/{uuid4().hex}"
-    print(f"listen_addr: {listen_addr}")
+    print(f"DEBUG: listen_addr: {listen_addr}")
 
     # Setup the listening server socket for C-Lightning to connect through.
     # Again we wrap in trio.from_thread_run_sync() to start the server calling back to
     # the global nursery.
     trio.from_thread.run_sync(
-        config.nursery.start_soon, serve, f"{listen_addr}", outbound_addr, False,
+        config.nursery.start_soon, serve, f"{listen_addr}", outbound_addr, True, True
     )
     plugin.log(
-        f"Now listening on {listen_addr}, ready to proxy out to {outbound_addr}",
+        f"INFO: Now listening on {listen_addr}, ready to proxy out to {outbound_addr}",
         level="info",
     )
 
     # Instruct C-Lightning RPC to connect to remote via the socket.
-    time.sleep(1)
+    time.sleep(0.25)
     return plugin.rpc.connect(pubkey, f"{listen_addr}")
 
 
@@ -63,6 +63,7 @@ def init(options, configuration, plugin):
         serve,
         f"/tmp/{node_info['id']}",
         node_info["binding"][0]["socket"],
+        True,
         False,
     )
     plugin.log("goTenna plugin initialized", level="info")

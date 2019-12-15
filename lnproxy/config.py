@@ -1,29 +1,3 @@
-"""
-byte: an 8-bit byte
-u16: a 2 byte unsigned integer
-u32: a 4 byte unsigned integer
-u64: an 8 byte unsigned integer
-
-tu16: a 0 to 2 byte unsigned integer
-tu32: a 0 to 4 byte unsigned integer
-tu64: a 0 to 8 byte unsigned integer
-
-chain_hash: a 32-byte chain identifier (see BOLT #0)
-channel_id: a 32-byte channel_id (see BOLT #2)
-sha256: a 32-byte SHA2-256 hash
-signature: a 64-byte bitcoin Elliptic Curve signature
-point: a 33-byte Elliptic Curve point (compressed encoding as per SEC 1 standard)
-short_channel_id: an 8 byte value identifying a channel (see BOLT #7)
-
-### BigSize ###
-
-uint8(x)                if x < 0xfd
-0xfd + be16(uint16(x))  if x < 0x10000
-0xfe + be32(uint32(x))  if x < 0x100000000
-0xff + be64(x)          otherwise.
-
-"""
-
 from pathlib import Path
 
 
@@ -35,22 +9,7 @@ be_u64: str = ">Q"
 le_32b: str = "<32s"
 le_onion: str = "<1366s"
 
-home = str(Path.home())
-lnproxy_home = f"{home}/.lnproxy"
-Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
-
-
-#####################################
-
-# TODO: Hardcodes to get rid of later
-NODE_DIR = {
-    0: "/tmp/l1-regtest",
-    1: "/tmp/l2-regtest",
-    2: "/tmp/l3-regtest",
-}
-ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
-rpc = None
-nursery = None
+# Lightning message size constants
 ADD_UPDATE_HTLC: int = 128
 MAX_PKT_LEN: int = 65569
 MSG_LEN: int = 2
@@ -59,22 +18,36 @@ MSG_HEADER: int = MSG_LEN + MSG_LEN_MAC
 MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
+
+# System-agnostic home path generator
+home = str(Path.home())
+lnproxy_home = f"{home}/.lnproxy"
+Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
+
+# Onion tool
+ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+
+# Plugin
+plugin = None
+rpc = None
+
+# Trio
+nursery = None
+trio_token = None
+
+# Lightning node pubkey: GID
+nodes = {
+    "034ba4f511b5441477e346bc0d9602e3f133aae1dc698efc94411b90fb63a037e7": 10000001,
+    "03659adf5822a021102e93c1e9a2161d680694435480a47065a0b70e68b90c6bc8": 10000002,
+    "03438950f77ee32afd7e3e1ad78b7f349aa905345b005f66fb9c0788eb5a0a68ed": 10000003,
+}
+node_info = None
+
+# goTenna Mesh
+mesh_conn = None
+
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
 #   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
 C_FEE: int = 2
 CLTV_d: int = 6
-
-#####################################
-
-my_node: int = 0
-my_node_dir: str = ""
-my_node_pubkey: str = ""
-next_node_pubkey: str = ""
-network = "regtest"
-remote_listen_SOCK: str = ""
-local_listen_SOCK: str = ""
-local_node_addr: str = ""
-remote_node_addr: str = ""
-
-#####################################

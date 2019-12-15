@@ -1,3 +1,4 @@
+# noinspection PyCompatibility
 import contextvars
 import functools
 import itertools
@@ -28,7 +29,7 @@ def log(msg):
 
 
 async def unlink_socket(address):
-    """Unlink a Unix Socket at address 'address'.
+    """Async Unlink a Unix Socket at address 'address' for clean shutdown.
     """
     socket_path = trio.Path(address)
     try:
@@ -39,11 +40,12 @@ async def unlink_socket(address):
             raise
 
 
-async def receive_exactly(stream, length, timeout=300):
+async def receive_exactly(stream, length, timeout=5):
     res = b""
     while len(res) < length and time.time() < (time.time() + timeout):
         res += await stream.receive_some(length - len(res))
     if len(res) == length:
+        # log(f"Received exactly {length} bytes!")
         return res
     else:
         log(
@@ -54,7 +56,7 @@ async def receive_exactly(stream, length, timeout=300):
         # raise TimeoutError("Didn't receive enough bytes within the timeout, discarding")
 
 
-async def proxy_stream(read_stream, write_stream, initiator):
+async def proxy_stream(read_stream, write_stream, initiator, to_mesh):
     """Proxy lightning message traffic from one stream to another.
     Handle and parse certain lightning messages.
     """
@@ -73,6 +75,7 @@ async def proxy_stream(read_stream, write_stream, initiator):
                 message += await receive_exactly(read_stream, req_len)
             # all non-handshake messages
             else:
+                # message = await read_stream.receive_some()
                 # Bolt #8: Read exactly 18 bytes from the network buffer.
                 header = await receive_exactly(read_stream, config.MSG_HEADER)
                 #
@@ -88,7 +91,7 @@ async def proxy_stream(read_stream, write_stream, initiator):
                 body = await receive_exactly(read_stream, body_len)
 
                 # parse the message
-                header, body = ln_msg.parse(header, body, initiator, log)
+                header, body = ln_msg.parse(header, body, to_mesh, log)
 
                 # Bolt #8: 16 Byte MAC of the Lightning message
                 body_mac = await receive_exactly(read_stream, config.MSG_MAC)
@@ -98,7 +101,6 @@ async def proxy_stream(read_stream, write_stream, initiator):
                 message = header + body + body_mac
 
             # send to remote
-            log(f"Sending message: Initiator={initiator} | {len(message)}")
             await write_stream.send_all(message)
 
             # increment handshake counter
@@ -111,20 +113,26 @@ async def proxy_stream(read_stream, write_stream, initiator):
             return
 
 
-async def handle_connection(inbound_stream, addr=None, initiator=False):
+async def handle_connection(inbound_stream, outbound_addr, initiator, to_mesh):
     """Create the outbound connection to addr and proxy inbound and outbound streams.
     """
     # Get a new context var for the connection logs
     request_info.set(next(COUNTER))
     # Open the outbound connection
-    outbound_stream = await trio.open_unix_socket(addr)
+    outbound_stream = await trio.open_unix_socket(outbound_addr)
     log(f"Proxying connection between {inbound_stream} and {outbound_stream}")
     try:
         # We run the proxies in a nursery so they can run simultaneously
         async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy_stream, outbound_stream, inbound_stream, initiator)
             nursery.start_soon(
-                proxy_stream, inbound_stream, outbound_stream, not initiator
+                proxy_stream,
+                outbound_stream,
+                inbound_stream,
+                not initiator,
+                not to_mesh,
+            )
+            nursery.start_soon(
+                proxy_stream, inbound_stream, outbound_stream, initiator, to_mesh
             )
     except ValueError as e:
         log(f"Error from handle_connection():\n{e}")
@@ -135,7 +143,7 @@ async def handle_connection(inbound_stream, addr=None, initiator=False):
         await outbound_stream.aclose()
 
 
-async def serve(listen_addr, outbound_addr, initiator=False):
+async def serve(listen_addr, outbound_addr, initiator, to_mesh):
     """Serve a listening socket at listen_addr.
     Start a handler for each new connection.
     """
@@ -150,12 +158,12 @@ async def serve(listen_addr, outbound_addr, initiator=False):
             # We wrap in a partial so that we can pass outbound_addr to
             # handle_connection because serve_listeners() doesn't support passing args.
             functools.partial(
-                handle_connection, addr=outbound_addr, initiator=initiator
+                handle_connection,
+                outbound_addr=outbound_addr,
+                initiator=initiator,
+                to_mesh=to_mesh,
             ),
             [trio.SocketListener(sock)],
         )
     except Exception as e:
         print(f"server error:\n{e}")
-    finally:
-        # Unlink the socket if it gets closed.
-        await unlink_socket(listen_addr)
