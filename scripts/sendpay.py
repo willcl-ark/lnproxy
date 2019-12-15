@@ -8,7 +8,7 @@ from lightning import LightningRpc, RpcError
 Challenge:
 rpc3 generates an invoice and returns details to rpc1. rpc1 then does a sendpay only to
 *rpc2*, who, upon not recognising the payment hash will generate an onion which forwards
-to rpc3.
+the payment to rpc3.
 """
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import atexit
+import signal
 import time
 from uuid import uuid4
 
@@ -11,22 +12,24 @@ import lnproxy.config as config
 import lnproxy.util as util
 
 plugin = Plugin()
-listen_addr = ""
 
 
 @atexit.register
-def cleanup():
+def cleanup(*args):
     """This attempts to cleanup all the unix socket symlinks upon receiving KILL signal
     """
     for socket in config.sockets:
         util.unlink_socket(socket)
 
 
+# Catch kill signals and run cleanup
+signal.signal(signal.SIGTERM, cleanup)
+signal.signal(signal.SIGINT, cleanup)
+
+
 def proxy_connect(pubkey, outbound_addr, plugin=None):
     """Connect to a remote node via the proxy.
     """
-    global listen_addr
-
     print(f"INFO: pubkey: {pubkey}, outbound_addr: {outbound_addr}")
     # Generate a random address to listen on (with Unix Socket).
     listen_addr = f"/tmp/{uuid4().hex}"
@@ -44,7 +47,7 @@ def proxy_connect(pubkey, outbound_addr, plugin=None):
     )
 
     # Instruct C-Lightning RPC to connect to remote via the socket.
-    time.sleep(0.25)
+    time.sleep(0.1)
     return plugin.rpc.connect(pubkey, f"{listen_addr}")
 
 

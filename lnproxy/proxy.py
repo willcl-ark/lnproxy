@@ -1,4 +1,3 @@
-# noinspection PyCompatibility
 import contextvars
 import functools
 import itertools
