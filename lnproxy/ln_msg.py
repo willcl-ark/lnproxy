@@ -66,7 +66,7 @@ def deserialize_htlc_payload(
     return channel_id, _id, amount_msat, payment_hash, cltv_expiry
 
 
-def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes:
+def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool, logger) -> bytes:
     """Parse an update_add_htlc message
     """
     # decode the htlc
@@ -75,7 +75,7 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
     )
 
     # outbound htlc from local lightning node:
-    if initiator:
+    if to_mesh:
         # chop off the onion before sending
         logger(f"INFO: We are htlc initiator; chopping off onion before transmission")
         return orig_payload[0:84]
@@ -101,16 +101,7 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
 
             # first get next pubkey
             # TODO: remove hard-code!
-            next_pubkey = (
-                subprocess.run(
-                    "/Users/will/src/lightning/cli/lightning-cli "
-                    "--lightning-dir=/tmp/l3-regtest getinfo | jq .id",
-                    shell=True,
-                    capture_output=True,
-                )
-                .stdout.decode()
-                .strip('"\n')
-            )
+            next_pubkey = util.get_next_pubkey(channel_id)
             logger("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
@@ -125,7 +116,7 @@ def parse_update_add_htlc(orig_payload: bytes, initiator: bool, logger) -> bytes
         return orig_payload + generated_onion
 
 
-def parse(header: bytes, body: bytes, initiator: bool, logger) -> Tuple[bytes, bytes]:
+def parse(header: bytes, body: bytes, to_mesh: bool, logger) -> Tuple[bytes, bytes]:
     """Parse a lightning message, optionally modify and then return it
     """
     # handle empty messages gracefully
@@ -145,7 +136,7 @@ def parse(header: bytes, body: bytes, initiator: bool, logger) -> Tuple[bytes, b
 
     # handle htlc_add_update
     if msg_code == config.ADD_UPDATE_HTLC:
-        body = msg_type + parse_update_add_htlc(msg_payload, initiator, logger)
+        body = msg_type + parse_update_add_htlc(msg_payload, to_mesh, logger)
         # recompute header based on length of msg without onion
         _header = b""
         _header += struct.pack(">H", len(body))

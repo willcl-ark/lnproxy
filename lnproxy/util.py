@@ -55,6 +55,29 @@ def get_short_chan_id(source: hex, dest: hex):
     return _id
 
 
+def int2bytes(i, enc):
+    return i.to_bytes((i.bit_length() + 7) // 8, enc)
+
+
+def switch_hex_endianness(str, enc1, enc2):
+    return int2bytes(int.from_bytes(bytes.fromhex(str), enc1), enc2).hex()
+
+
+def get_next_pubkey(from_chan_id):
+    # get list of peer pubkeys and their channels
+    list_funds = config.rpc.listfunds()["channels"]
+
+    # convert funding_txid to BE
+    for channel in list_funds:
+        channel["funding_txid"] = switch_hex_endianness(
+            channel["funding_txid"], "little", "big"
+        )
+
+        # select the first one which isn't from_chan_id
+        if channel["funding_txid"] != from_chan_id.hex():
+            return channel["peer_id"]
+
+
 def check_onion_tool():
     onion = pathlib.Path(config.ONION_TOOL)
     if onion.exists() and onion.is_file():
