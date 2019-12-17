@@ -20,6 +20,7 @@ def cleanup(*args):
     """
     for socket in config.sockets:
         util.unlink_socket(socket)
+    raise KeyboardInterrupt
 
 
 # Catch kill signals and run cleanup
@@ -67,6 +68,10 @@ def init(options, configuration, plugin):
     config.rpc = plugin.rpc
     # Get the local node info
     node_info = plugin.rpc.getinfo()
+    # Save the node ID to config for later
+    # TODO: Remove hardcode
+    config.node_id = int("".join(filter(str.isdigit, node_info["lightning-dir"])))
+    plugin.log(f"Node_ID: {config.node_id}")
 
     # Start serving the primary listening socket to receive all incoming connections.
     # Wrap in a trio.from_thread_sync() to call back to the main thread using the

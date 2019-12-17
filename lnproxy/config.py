@@ -62,6 +62,9 @@ nursery = None
 # Sockets opened by the proxy
 sockets = []
 
+# Node ID
+node_id = ""
+
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
 #   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
