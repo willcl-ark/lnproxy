@@ -1,12 +1,19 @@
+import contextvars
+import itertools
 import logging
 import pathlib
+import time
 import struct
+import queue
 
 import lnproxy.config as config
-import lnproxy.pk_from_hsm as extract_pk_from_hsm
+# import lnproxy.pk_from_hsm as extract_pk_from_hsm
 
 logger = logging.getLogger(f"{'UTIL':<6s}")
-
+# Global counter for the connection log messages
+COUNTER = itertools.count()
+# Context variable for the connection log messages
+request_info = contextvars.ContextVar("request_info")
 
 def unlink_socket(address):
     """Unlink a Unix Socket at address 'address'.
@@ -64,11 +71,11 @@ def check_onion_tool():
     return False
 
 
-def get_regtest_privkeys(nodes):
-    keys = []
-    for node in nodes:
-        keys.append(extract_pk_from_hsm.get_privkey(node))
-    return keys
+# def get_regtest_privkeys(nodes):
+#     keys = []
+#     for node in nodes:
+#         keys.append(extract_pk_from_hsm.get_privkey(node))
+#     return keys
 
 
 def hex_dump(data, length=16):
@@ -84,3 +91,60 @@ def hex_dump(data, length=16):
         lines.append("%04x  %-*s  %s\n" % (c, length * 3, _hex, printable))
     result = "\n" + "".join(lines)
     logger.debug(result)
+
+
+async def receive_exactly(stream, length, timeout=5):
+    res = b""
+    while len(res) < length and time.time() < (time.time() + timeout):
+        res += await stream.receive_some(length - len(res))
+    if len(res) == length:
+        # log(f"Received exactly {length} bytes!")
+        return res
+    else:
+        log(
+            "Didn't receive enough bytes within the timeout, "
+            "attempting to continue anyway!!"
+        )
+        return res
+        # raise TimeoutError("Didn't receive enough bytes within the timeout, discarding")
+
+
+def log(msg, level="debug"):
+    """Logs a message using the context var.
+    """
+    try:
+        # Get the appropriate context variable
+        request_tag = request_info.get()
+        # Log the message
+        config.plugin.log(f"Conn {request_tag}: {msg}", level=level)
+    # if rpc not configured or request_tag not setup yet, just print
+    except (AttributeError, LookupError):
+        print(f"{level.upper()}: {msg}")
+
+
+def create_queue(pubkey: str):
+    assert len(pubkey) == 4
+    print("Creating new queue...")
+    config.QUEUE[pubkey] = {
+        "to_send": queue.Queue(),
+        "recvd": queue.Queue()
+    }
+    print(f"Created queues at: config.QUEUE[{pubkey}]")
+
+
+def chunk_to_list(data, chunk_len, prefix):
+    """Adds data of arbitrary length to a queue in a certain chunk size
+    """
+    for i in range(0, len(data), chunk_len):
+        yield (prefix + data[i: i + chunk_len])
+
+
+def get_GID(pk):
+    for key in config.nodes.keys():
+        if key.startswith(pk.hex()):
+            return config.nodes.get(key)
+    print(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}")
+
+
+
+

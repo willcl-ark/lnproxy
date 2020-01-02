@@ -1,169 +1,82 @@
-# noinspection PyCompatibility
-import contextvars
 import functools
-import itertools
-import socket
-import struct
-import time
-
 import trio
 
 import lnproxy.config as config
-import lnproxy.ln_msg as ln_msg
+import lnproxy.util as util
 
 
-# Global counter for the connection log messages
-COUNTER = itertools.count()
-# Context variable for the connection log messages
-request_info = contextvars.ContextVar("request_info")
-
-
-def log(msg):
-    """Logs a message using the context var.
-    We rely on the C-Lightning plugin monkey patch to catch regular print statements
+async def queue_to_stream(queue, stream):
+    """Read from a queue and write to a stream
     """
-    # Get the appropriate context variable
-    request_tag = request_info.get()
-    # Log the message
-    print(f"Conn {request_tag}: {msg}")
-
-
-async def unlink_socket(address):
-    """Async Unlink a Unix Socket at address 'address' for clean shutdown.
-    """
-    socket_path = trio.Path(address)
-    try:
-        await socket_path.unlink()
-    except OSError:
-        # Only raise an error if the path exists but we can't unlink it, else ignore
-        if await socket_path.exists():
-            raise
-
-
-async def receive_exactly(stream, length, timeout=5):
-    res = b""
-    while len(res) < length and time.time() < (time.time() + timeout):
-        res += await stream.receive_some(length - len(res))
-    if len(res) == length:
-        # log(f"Received exactly {length} bytes!")
-        return res
-    else:
-        log(
-            "Didn't receive enough bytes within the timeout, "
-            "attempting to continue anyway!!"
-        )
-        return res
-        # raise TimeoutError("Didn't receive enough bytes within the timeout, discarding")
-
-
-async def proxy_stream(read_stream, write_stream, initiator, to_mesh):
-    """Proxy lightning message traffic from one stream to another.
-    Handle and parse certain lightning messages.
-    """
-    # Bolt #8: The handshake proceeds in three acts, taking 1.5 round trips.
-    hs_acts = 2 if initiator else 1
-    hs_pkt_size = {True: [50, 66], False: [50]}
-    i = 0
     while True:
-        try:
-
-            # if a handshake message
-            if i < hs_acts:
-                # pass full 50 / 66 B messages transparently
-                req_len = hs_pkt_size[initiator][i]
-                message = b""
-                message += await receive_exactly(read_stream, req_len)
-            # all non-handshake messages
-            else:
-                # message = await read_stream.receive_some()
-                # Bolt #8: Read exactly 18 bytes from the network buffer.
-                header = await receive_exactly(read_stream, config.MSG_HEADER)
-                #
-                # Bolt #8: 2-byte message length
-                body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]
-
-                # Bolt #8: 16-byte MAC of the message length
-                # body_len_mac = struct.unpack("16s", header[-16:])[0]
-                # TODO: we can add a fake MAC on here during full mesh operation
-                # body_len_mac = 16 * (bytes.fromhex("00"))
-
-                # Bolt #8: Lightning message
-                body = await receive_exactly(read_stream, body_len)
-
-                # parse the message
-                header, body = ln_msg.parse(header, body, to_mesh, log)
-
-                # Bolt #8: 16 Byte MAC of the Lightning message
-                body_mac = await receive_exactly(read_stream, config.MSG_MAC)
-                # TODO: we can add a fake MAC on here during full mesh operation
-                # body_mac = 16 * (bytes.fromhex("00"))
-
-                message = header + body + body_mac
-
-            # send to remote
-            await write_stream.send_all(message)
-
-            # increment handshake counter
-            i += 1
-        except trio.BrokenResourceError:
-            log("Remote closed the connection")
-            return
-        except Exception as e:
-            log(f"Exception inside proxy.proxy\n{e}")
-            return
+        if queue.empty():
+            await trio.sleep(5)
+        else:
+            msg = queue.get()
+            await stream.send_all(msg)
 
 
-async def handle_connection(inbound_stream, outbound_addr, initiator, to_mesh):
-    """Create the outbound connection to addr and proxy inbound and outbound streams.
+async def stream_to_queue(stream, queue):
+    """Read from a stream and write to a queue
     """
-    # Get a new context var for the connection logs
-    request_info.set(next(COUNTER))
-    # Open the outbound connection
-    outbound_stream = await trio.open_unix_socket(outbound_addr)
-    log(f"Proxying connection between {inbound_stream} and {outbound_stream}")
+    async for message in stream:
+        queue.put(message)
+
+
+async def proxy_streams(stream, _pubkey):
+    print(f"Proxying between stream and queue ({_pubkey}")
     try:
-        # We run the proxies in a nursery so they can run simultaneously
         async with trio.open_nursery() as nursery:
             nursery.start_soon(
-                proxy_stream,
-                outbound_stream,
-                inbound_stream,
-                not initiator,
-                not to_mesh,
+                stream_to_queue, stream, config.QUEUE[_pubkey]["to_send"],
             )
             nursery.start_soon(
-                proxy_stream, inbound_stream, outbound_stream, initiator, to_mesh
+                queue_to_stream, config.QUEUE[_pubkey]["recvd"], stream,
             )
-    except ValueError as e:
-        log(f"Error from handle_connection():\n{e}")
     except trio.ClosedResourceError as e:
-        log(f"Attempted to use resource after we closed:\n{e}")
+        print(f"Attempted to use resource after we closed:\n{e}")
     finally:
-        await inbound_stream.aclose()
-        await outbound_stream.aclose()
+        await stream.aclose()
 
 
-async def serve(listen_addr, outbound_addr, initiator, to_mesh):
+async def handle_inbound(_pubkey):
+    print(f"Starting proxy.handle_inbound for {_pubkey}")
+    # first connect to our local C-Lightning node
+    stream = await trio.open_unix_socket(
+            config.node_info["binding"][0]["socket"]
+    )
+    print("Connected to local C-Lightning node")
+    # next proxy between the queue and the socket
+    await proxy_streams(stream, _pubkey)
+
+
+async def handle_outbound(stream, pubkey: str):
+    """Started for each outbound connection.
+    """
+    _pubkey = pubkey[0:4]
+    print(f"Handling outbound connection to {_pubkey}")
+    if pubkey not in config.QUEUE:
+        util.create_queue(_pubkey)
+    print(f"Created mesh queue for {_pubkey}")
+    await proxy_streams(stream, _pubkey)
+
+
+async def serve_outbound(listen_addr, pubkey: str):
     """Serve a listening socket at listen_addr.
     Start a handler for each new connection.
     """
     # Setup the listening socket
-    sock = trio.socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
-    print(f"Listening on socket {listen_addr}")
+    print(f"Listening for new connections on {listen_addr}")
     # Start a new handle_connection() for each new connection
     try:
         await trio.serve_listeners(
-            # We wrap in a partial so that we can pass outbound_addr to
-            # handle_connection because serve_listeners() doesn't support passing args.
-            functools.partial(
-                handle_connection,
-                outbound_addr=outbound_addr,
-                initiator=initiator,
-                to_mesh=to_mesh,
-            ),
+            functools.partial(handle_outbound, pubkey=pubkey),
             [trio.SocketListener(sock)],
         )
     except Exception as e:
-        print(f"server error:\n{e}")
+        print(f"proxy.serve_outbound error:\n{e}")
+
+
