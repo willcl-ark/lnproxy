@@ -1,4 +1,5 @@
 import contextvars
+import functools
 import itertools
 import logging
 import pathlib
@@ -146,5 +147,53 @@ def get_GID(pk):
     print(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}")
 
 
+def rate_dec(private=False):
+
+    def rate_limit(func):
+        """Smart rate-limiter
+        """
+
+        @functools.wraps(func)
+        def limit(*args, **kwargs):
+            # how many can we send per minute
+            if not config.UBER:
+                per_min = 12
+            else:
+                per_min = 5 if not private else 10
+            min_interval = 2
+
+            # add this send time to the list
+            config.SEND_TIMES.append(time.time())
+
+            # if we've not sent before, send!
+            if len(config.SEND_TIMES) <= 1:
+                pass
+
+            # if we've not sent 'per_min' in total, sleep & send!
+            elif len(config.SEND_TIMES) < per_min + 1:
+                time.sleep(min_interval)
+                pass
+
+            # if our 'per_min'-th oldest is older than 'per_min' secs ago, go!
+            elif config.SEND_TIMES[-(per_min + 1)] < (time.time() - 60):
+                time.sleep(min_interval)
+                pass
+
+            # wait the required time
+            else:
+                wait = int(60 - (time.time() - config.SEND_TIMES[-(per_min + 1)])) + 1
+                interval = 1
+                for remaining in range(wait, 0, interval * -1):
+                    if remaining % 10 == 0:
+                        print(f"{remaining} seconds remaining")
+                    time.sleep(1)
+
+            # time.sleep(12)
+            # execute the send
+            return func(*args, **kwargs)
+
+        return limit
+
+    return rate_limit
 
 

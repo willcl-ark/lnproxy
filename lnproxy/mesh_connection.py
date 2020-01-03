@@ -120,7 +120,6 @@ class Connection:
         print("Started send_handler")
         while True:
             if not self.send_msg_q.empty():
-                await trio.sleep(20)
                 self.send_from_queue(self.send_msg_q.get())
             else:
                 await trio.sleep(1)
@@ -418,7 +417,7 @@ class Connection:
                 self.log(f"{__gid} is not a valid GID.")
             return None, None
 
-    # @utilities.rate_dec(private=True)
+    @util.rate_dec(private=True)
     def send_private(self, gid: int, message, binary=False):
         """ Send a private message to a contact
         GID is the GID to send the private message to.
