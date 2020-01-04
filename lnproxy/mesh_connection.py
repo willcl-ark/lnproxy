@@ -195,7 +195,7 @@ class Connection:
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
             self.recv_msg_q.put(evt.message.payload._binary_data)
-            log(evt.message)
+            log(f"Received message: {evt.message}")
 
         elif evt.event_type == goTenna.driver.Event.DEVICE_PRESENT:
             if self._awaiting_disconnect_after_fw_update[0]:
@@ -221,7 +221,7 @@ class Connection:
                 # own
                 log("Firmware update: Device disconnected, awaiting reconnect")
             else:
-                log("Disconnected! {}".format(evt))
+                log("Disconnected! {evt}")
                 # We reset the configuration here so that if the user plugs in a
                 # different device it is not immediately reconfigured with new and
                 # incorrect data
@@ -238,12 +238,7 @@ class Connection:
                 if member.gid_val == self.api_thread.gid.gid_val:
                     index = idx
                     break
-            log(
-                "Added to group {}: You are member {}".format(
-                    evt.group.gid.gid_val, index
-                )
-            )
-            # self.events.group_create.put(evt)
+            log(f"Added to group {evt.group.gid.gid_val}: You are member {index}")
 
     def build_callback(self, error_handler=None, binary=False):
         """ Build a callback for sending to the API thread. May specify a callable
