@@ -146,7 +146,9 @@ def parse(header: bytes, body: bytes,) -> Tuple[bytes, bytes]:
     return header, body
 
 
-async def handshake(stream, i, initiator):
+async def handshake(stream, i: int, initiator: bool) -> bytes:
+    """Handles handshake messages.
+    """
     hs_pkt_size = {True: [50, 66], False: [50]}
     # pass full 50 / 66 B messages transparently
     req_len = hs_pkt_size[initiator][i]
@@ -155,8 +157,8 @@ async def handshake(stream, i, initiator):
     return message
 
 
-async def read_lightning_message(stream):
-    """Reads a lightning message from a stream and returns the message
+async def read_lightning_message(stream) -> bytes:
+    """Reads a full lightning message from a stream and returns the message.
     """
     # Bolt #8: Read exactly 18 bytes from the network buffer.
     header = await util.receive_exactly(stream, config.MSG_HEADER)

@@ -16,7 +16,7 @@ COUNTER = itertools.count()
 request_info = contextvars.ContextVar("request_info")
 
 
-def unlink_socket(address):
+def unlink_socket(address: str):
     """Unlink a Unix Socket at address 'address'.
     """
     socket_path = pathlib.Path(address)
@@ -36,7 +36,7 @@ def get_my_payment_hashes() -> list:
     ]
 
 
-def get_short_chan_id(source: hex, dest: hex):
+def get_short_chan_id(source: hex, dest: hex) -> bytes:
     channel = [
         channel
         for channel in config.rpc.listchannels(source=source)["channels"]
@@ -63,7 +63,7 @@ def get_short_chan_id(source: hex, dest: hex):
     return _id
 
 
-def check_onion_tool():
+def check_onion_tool() -> bool:
     onion = pathlib.Path(config.ONION_TOOL)
     if onion.exists() and onion.is_file():
         return True
@@ -96,7 +96,7 @@ def hex_dump(data, length=16):
     config.log(result, level="debug")
 
 
-async def receive_exactly(stream, length, timeout=5):
+async def receive_exactly(stream, length: int, timeout: int = 30) -> bytes:
     res = b""
     while len(res) < length and time.time() < (time.time() + timeout):
         res += await stream.receive_some(length - len(res))
@@ -110,7 +110,6 @@ async def receive_exactly(stream, length, timeout=5):
             level="warn",
         )
         return res
-        # raise TimeoutError("Didn't receive enough bytes within the timeout, discarding")
 
 
 # def log(msg, level="debug"):
@@ -132,17 +131,14 @@ def create_queue(pubkey: str):
     config.log(f"Created queues at: config.QUEUE[{pubkey}]")
 
 
-def chunk_to_list(data, chunk_len, prefix):
+def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
     """Adds data of arbitrary length to a queue in a certain chunk size
     """
     for i in range(0, len(data), chunk_len):
-        try:
-            yield (prefix + data[i : i + chunk_len])
-        except GeneratorExit as e:
-            config.log(e, level="error")
+        yield (prefix + data[i : i + chunk_len])
 
 
-def get_GID(pk):
+def get_GID(pk: bytes):
     for key in config.nodes.keys():
         if key.startswith(pk.hex()):
             return config.nodes.get(key)

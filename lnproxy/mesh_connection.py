@@ -62,7 +62,7 @@ class Connection:
         log("goTenna Connection object initialised", level="debug")
 
     @staticmethod
-    async def parse_recv_mesh_msg(msg):
+    async def parse_recv_mesh_msg(msg: bytes):
         _to = msg[0:2].hex()
         _from = msg[2:4].hex()
         _msg = msg[4:]
@@ -193,7 +193,7 @@ class Connection:
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
             self.recv_msg_q.put(evt.message.payload._binary_data)
-            log(f"Received message: {evt.message}")
+            # log(f"Received message: {evt.message}", level="debug")
 
         elif evt.event_type == goTenna.driver.Event.DEVICE_PRESENT:
             if self._awaiting_disconnect_after_fw_update[0]:
