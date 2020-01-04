@@ -60,7 +60,7 @@ node_info = None
 
 # goTenna Mesh
 mesh_conn = None
-UBER = None
+UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees

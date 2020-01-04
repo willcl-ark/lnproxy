@@ -53,11 +53,11 @@ def deserialize_htlc_payload(payload: bytes,) -> Tuple[bytes, int, int, bytes, i
     payment_hash = struct.unpack(config.le_32b, payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, payload[80:84])[0]
 
-    util.log(f"channel_id: {channel_id.hex()}")
-    util.log(f"id: {_id}")
-    util.log(f"amount_msat: {amount_msat}")
-    util.log(f"payment_hash: {payment_hash.hex()}")
-    util.log(f"cltv_expiry: {cltv_expiry}")
+    config.log(f"channel_id: {channel_id.hex()}")
+    config.log(f"id: {_id}")
+    config.log(f"amount_msat: {amount_msat}")
+    config.log(f"payment_hash: {payment_hash.hex()}")
+    config.log(f"cltv_expiry: {cltv_expiry}")
 
     return channel_id, _id, amount_msat, payment_hash, cltv_expiry
 
@@ -73,16 +73,18 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
     # outbound htlc from local lightning node:
     if to_mesh:
         # chop off the onion before sending
-        util.log(f"INFO: We are htlc initiator; chopping off onion before transmission")
+        config.log(
+            f"INFO: We are htlc initiator; chopping off onion before transmission"
+        )
         return orig_payload[0:84]
 
     # htlc from external lightning node
     else:
         # generate a new onion as there won't be one
-        util.log(f"INFO: We are htlc recipient; generating new onion")
+        config.log(f"INFO: We are htlc recipient; generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            util.log("INFO: We're the final hop!")
+            config.log("INFO: We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
@@ -98,7 +100,7 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
             # first get next pubkey
             # TODO: remove hard-code!
             next_pubkey = util.get_next_pubkey(channel_id)
-            util.log("INFO: We're not the final hop...")
+            config.log("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=next_pubkey,
@@ -106,13 +108,13 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-        util.log(f"INFO: Generated onion\n{generated_onion}")
+        config.log(f"INFO: Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
         return orig_payload + generated_onion
 
 
-def parse(header: bytes, body: bytes, to_mesh: bool) -> Tuple[bytes, bytes]:
+def parse(header: bytes, body: bytes,) -> Tuple[bytes, bytes]:
     """Parse a lightning message, optionally modify and then return it
     """
     # handle empty messages gracefully
@@ -125,36 +127,41 @@ def parse(header: bytes, body: bytes, to_mesh: bool) -> Tuple[bytes, bytes]:
 
     # filter unknown codes and return without processing
     if msg_code not in codes.keys():
-        util.log(f"WARN: Message code not found in ln_msg.codes.keys(): {msg_code}")
+        config.log(
+            f"Message code not found in ln_msg.codes.keys(): {msg_code}", level="warn"
+        )
         return header, body
 
-    util.log(f"INFO: {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B")
+    config.log(f"{codes.get(msg_code):<27s} | {len(msg_payload):>4d}B", level="debug")
 
-    # handle htlc_add_update
-    if msg_code == config.ADD_UPDATE_HTLC:
-        body = msg_type + parse_update_add_htlc(msg_payload, to_mesh)
-        # recompute header based on length of msg without onion
-        _header = b""
-        _header += struct.pack(">H", len(body))
-        _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
-        return _header, body
+    # # handle htlc_add_update
+    # if msg_code == config.ADD_UPDATE_HTLC:
+    #     body = msg_type + parse_update_add_htlc(msg_payload, to_mesh)
+    #     # recompute header based on length of msg without onion
+    #     _header = b""
+    #     _header += struct.pack(">H", len(body))
+    #     _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
+    #     return _header, body
 
     return header, body
 
 
-async def handshake(i, initiator, read_stream):
+async def handshake(stream, i, initiator):
     hs_pkt_size = {True: [50, 66], False: [50]}
     # pass full 50 / 66 B messages transparently
     req_len = hs_pkt_size[initiator][i]
     message = b""
-    message += await util.receive_exactly(read_stream, req_len)
+    message += await util.receive_exactly(stream, req_len)
     return message
 
 
-async def lightning_message(read_stream, to_mesh):
+async def read_lightning_message(stream):
+    """Reads a lightning message from a stream and returns the message
+    """
+    config.log("Reading lightning message")
     # Bolt #8: Read exactly 18 bytes from the network buffer.
-    header = await util.receive_exactly(read_stream, config.MSG_HEADER)
-    #
+    header = await util.receive_exactly(stream, config.MSG_HEADER)
+
     # Bolt #8: 2-byte message length
     body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]
 
@@ -164,13 +171,13 @@ async def lightning_message(read_stream, to_mesh):
     # body_len_mac = 16 * (bytes.fromhex("00"))
 
     # Bolt #8: Lightning message
-    body = await util.receive_exactly(read_stream, body_len)
+    body = await util.receive_exactly(stream, body_len)
 
     # parse the message
-    header, body = parse(header, body, to_mesh)
+    header, body = parse(header, body)
 
     # Bolt #8: 16 Byte MAC of the Lightning message
-    body_mac = await util.receive_exactly(read_stream, config.MSG_MAC)
+    body_mac = await util.receive_exactly(stream, config.MSG_MAC)
     # TODO: we can add a fake MAC on here during full mesh operation
     # body_mac = 16 * (bytes.fromhex("00"))
 

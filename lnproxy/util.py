@@ -98,10 +98,11 @@ def hex_dump(data, length=16):
 
 async def receive_exactly(stream, length, timeout=5):
     res = b""
+    config.log("Starting 'receive_exactly'")
     while len(res) < length and time.time() < (time.time() + timeout):
         res += await stream.receive_some(length - len(res))
     if len(res) == length:
-        # config.log(f"Received exactly {length} bytes!")
+        config.log(f"Received exactly {length} bytes!")
         return res
     else:
         config.log(
@@ -158,7 +159,7 @@ def rate_dec(private=False):
                 per_min = 12
             else:
                 per_min = 5  # if not private else 8
-            min_interval = 2
+            min_interval = 1
 
             # add this send time to the list
             config.SEND_TIMES.append(time.time())

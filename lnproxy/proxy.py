@@ -2,6 +2,7 @@ import functools
 import trio
 
 import lnproxy.config as config
+import lnproxy.ln_msg as ln_msg
 import lnproxy.util as util
 
 
@@ -19,19 +20,28 @@ async def queue_to_stream(queue, stream):
             await stream.send_all(msg)
 
 
-async def stream_to_queue(stream, queue):
-    """Read from a stream and write to a queue
+async def stream_to_queue(stream, queue, initiator=False):
+    """Read from a stream and write to a queue.
+    Will handle lightning message parsing for outbound messages.
     """
-    async for message in stream:
+    i = 0
+    hs_acts = 2 if initiator else 1
+    print(f"hs_acts = {hs_acts} and initiator {initiator}")
+    while True:
+        if i < hs_acts:
+            message = await ln_msg.handshake(stream, i, initiator)
+        else:
+            message = await ln_msg.read_lightning_message(stream)
         queue.put(message)
+        i += 1
 
 
-async def proxy_streams(stream, _pubkey):
+async def proxy_streams(stream, _pubkey, initiator=False):
     log(f"Proxying between stream and queue {_pubkey}")
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(
-                stream_to_queue, stream, config.QUEUE[_pubkey]["to_send"],
+                stream_to_queue, stream, config.QUEUE[_pubkey]["to_send"], initiator
             )
             nursery.start_soon(
                 queue_to_stream, config.QUEUE[_pubkey]["recvd"], stream,
@@ -59,7 +69,7 @@ async def handle_outbound(stream, pubkey: str):
     if pubkey not in config.QUEUE:
         util.create_queue(_pubkey)
     log(f"Created mesh queue for {_pubkey}")
-    await proxy_streams(stream, _pubkey)
+    await proxy_streams(stream, _pubkey, initiator=True)
 
 
 async def serve_outbound(listen_addr, pubkey: str):
