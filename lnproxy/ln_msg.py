@@ -158,7 +158,6 @@ async def handshake(stream, i, initiator):
 async def read_lightning_message(stream):
     """Reads a lightning message from a stream and returns the message
     """
-    config.log("Reading lightning message")
     # Bolt #8: Read exactly 18 bytes from the network buffer.
     header = await util.receive_exactly(stream, config.MSG_HEADER)
 

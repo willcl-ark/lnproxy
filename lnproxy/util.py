@@ -98,11 +98,10 @@ def hex_dump(data, length=16):
 
 async def receive_exactly(stream, length, timeout=5):
     res = b""
-    config.log("Starting 'receive_exactly'")
     while len(res) < length and time.time() < (time.time() + timeout):
         res += await stream.receive_some(length - len(res))
     if len(res) == length:
-        config.log(f"Received exactly {length} bytes!")
+        # config.log(f"Received exactly {length} bytes!")
         return res
     else:
         config.log(
@@ -137,7 +136,10 @@ def chunk_to_list(data, chunk_len, prefix):
     """Adds data of arbitrary length to a queue in a certain chunk size
     """
     for i in range(0, len(data), chunk_len):
-        yield (prefix + data[i : i + chunk_len])
+        try:
+            yield (prefix + data[i : i + chunk_len])
+        except GeneratorExit as e:
+            config.log(e, level="error")
 
 
 def get_GID(pk):

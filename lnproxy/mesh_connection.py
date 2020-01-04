@@ -34,7 +34,7 @@ class Connection:
     """
 
     def __init__(self, debug=False):
-        log("Initialising goTenna Connection object")
+        log("Initialising goTenna Connection object", level="debug")
         self.api_thread = None
         self.status = {}
         self.in_flight_events = {}
@@ -59,7 +59,7 @@ class Connection:
         config.nursery.start_soon(self.send_handler)
         config.nursery.start_soon(self.recv_handler)
         config.nursery.start_soon(self.send_queue_daemon)
-        log("goTenna Connection object initialised")
+        log("goTenna Connection object initialised", level="debug")
 
     @staticmethod
     async def parse_recv_mesh_msg(msg):
@@ -69,11 +69,9 @@ class Connection:
         # If we don't have a queue, make one and start a daemon to manage connection
         if _from not in config.QUEUE:
             util.create_queue(_from)
-            # start recv daemon
+            # start a new recv daemon
             config.nursery.start_soon(
-                proxy.handle_inbound,
-                _from,
-                # trio_token=config.trio_token,
+                proxy.handle_inbound, _from,
             )
         config.QUEUE[_from]["recvd"].put(_msg)
 
@@ -81,7 +79,7 @@ class Connection:
         """Monitors all queues and puts all messages in general send queue.
         Splits each message up into 200B segments and appends the appropriate header.
         """
-        log("Started mesh_queue_daemon")
+        log("Started mesh_queue_daemon", level="debug")
         while True:
             # no connections yet
             if len(config.QUEUE.items()) == 0:
@@ -113,7 +111,7 @@ class Connection:
         # lookup the recipient GID
         to_pk = msg[0:2]
         to_GID = util.get_GID(to_pk)
-        log(f"Sending message {msg.hex()} to GID:{to_GID}")
+        log(f"Sending message {msg.hex()} to GID:{to_GID}", level="debug")
 
         # send to GID using private message
         self.send_private(to_GID, msg, binary=True)
@@ -121,7 +119,7 @@ class Connection:
     async def send_handler(self):
         """Handle messages to be sent via the mesh.
         """
-        log("Started send_handler")
+        log("Started send_handler", level="debug")
         while True:
             if not self.send_msg_q.empty():
                 self.send_from_queue(self.send_msg_q.get())
@@ -132,7 +130,7 @@ class Connection:
         """Handle messages received from the mesh.
         Put them in the right queue.
         """
-        log("Started recv_handler")
+        log("Started recv_handler", level="debug")
         while True:
             if not self.recv_msg_q.empty():
                 await self.parse_recv_mesh_msg(self.recv_msg_q.get())

@@ -29,10 +29,10 @@ def proxy_connect(pubkey, plugin=None):
     """
     # global listen_addr
 
-    print(f"Proxy connect to pubkey: {pubkey}")
+    plugin.log(f"Proxy connect to pubkey: {pubkey}")
     # Generate a random address to listen on (with Unix Socket).
     listen_addr = f"/tmp/{uuid4().hex}"
-    print(f"listen_addr: {listen_addr}")
+    plugin.log(f"listen_addr: {listen_addr}")
 
     # Setup the listening server socket for C-Lightning to connect through.
     # Again we wrap in trio.from_thread_run_sync() to start the server calling back to
@@ -63,18 +63,6 @@ def init(options, configuration, plugin):
     # Get the local node info
     config.node_info = plugin.rpc.getinfo()
     config.logger = plugin.log
-    # Start serving the primary listening socket to receive all incoming connections.
-    # Wrap in a trio.from_thread_sync() to call back to the main thread using the
-    # nursery from the global scope.
-    # trio.from_thread.run_sync(
-    #     config.nursery.start_soon,
-    #     serve,
-    #     f"/tmp/{node_info['id']}",
-    #     node_info["binding"][0]["socket"],
-    #     True,
-    #     False,
-    # )
-
     # suppress gossip
     plugin.rpc.dev_suppress_gossip()
     # start the connection daemon in main trio pool after we have node info
