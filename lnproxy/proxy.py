@@ -5,6 +5,9 @@ import lnproxy.config as config
 import lnproxy.util as util
 
 
+log = config.log
+
+
 async def queue_to_stream(queue, stream):
     """Read from a queue and write to a stream
     """
@@ -24,7 +27,7 @@ async def stream_to_queue(stream, queue):
 
 
 async def proxy_streams(stream, _pubkey):
-    print(f"Proxying between stream and queue ({_pubkey}")
+    log(f"Proxying between stream and queue {_pubkey}")
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(
@@ -34,18 +37,16 @@ async def proxy_streams(stream, _pubkey):
                 queue_to_stream, config.QUEUE[_pubkey]["recvd"], stream,
             )
     except trio.ClosedResourceError as e:
-        print(f"Attempted to use resource after we closed:\n{e}")
+        log(f"Attempted to use resource after we closed:\n{e}")
     finally:
         await stream.aclose()
 
 
 async def handle_inbound(_pubkey):
-    print(f"Starting proxy.handle_inbound for {_pubkey}")
+    log(f"Handling new incoming connection from pubkey: {_pubkey}")
     # first connect to our local C-Lightning node
-    stream = await trio.open_unix_socket(
-            config.node_info["binding"][0]["socket"]
-    )
-    print("Connected to local C-Lightning node")
+    stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+    log("Connection made to local C-Lightning node")
     # next proxy between the queue and the socket
     await proxy_streams(stream, _pubkey)
 
@@ -54,10 +55,10 @@ async def handle_outbound(stream, pubkey: str):
     """Started for each outbound connection.
     """
     _pubkey = pubkey[0:4]
-    print(f"Handling outbound connection to {_pubkey}")
+    log(f"Handling new outbound connection to {_pubkey}")
     if pubkey not in config.QUEUE:
         util.create_queue(_pubkey)
-    print(f"Created mesh queue for {_pubkey}")
+    log(f"Created mesh queue for {_pubkey}")
     await proxy_streams(stream, _pubkey)
 
 
@@ -69,7 +70,7 @@ async def serve_outbound(listen_addr, pubkey: str):
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
-    print(f"Listening for new connections on {listen_addr}")
+    log(f"Listening for new outbound connections on {listen_addr}")
     # Start a new handle_connection() for each new connection
     try:
         await trio.serve_listeners(
@@ -77,6 +78,4 @@ async def serve_outbound(listen_addr, pubkey: str):
             [trio.SocketListener(sock)],
         )
     except Exception as e:
-        print(f"proxy.serve_outbound error:\n{e}")
-
-
+        log(f"proxy.serve_outbound error:\n{e}")

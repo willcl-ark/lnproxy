@@ -30,6 +30,19 @@ ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
 # Plugin
 plugin = None
 rpc = None
+logger = None
+
+
+def log(msg, level="info"):
+    try:
+        logger(msg, level=level)
+    except TypeError:
+        # logger not defined yet by plugin
+        print(f"{level.upper()}: {msg}")
+    except AttributeError:
+        # object doesn't support .split()
+        print(f"{level.upper()}: {str(msg)}")
+
 
 # Trio
 nursery = None

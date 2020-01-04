@@ -62,6 +62,7 @@ def init(options, configuration, plugin):
     config.rpc = plugin.rpc
     # Get the local node info
     config.node_info = plugin.rpc.getinfo()
+    config.logger = plugin.log
     # Start serving the primary listening socket to receive all incoming connections.
     # Wrap in a trio.from_thread_sync() to call back to the main thread using the
     # nursery from the global scope.
