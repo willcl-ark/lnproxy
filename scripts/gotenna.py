@@ -74,6 +74,8 @@ def init(options, configuration, plugin):
     #     False,
     # )
 
+    # suppress gossip
+    plugin.rpc.dev_suppress_gossip()
     # start the connection daemon in main trio pool after we have node info
     plugin.log("goTenna plugin initialized", level="info")
 
