@@ -19,7 +19,7 @@ async def queue_to_stream(queue, stream, initiator: bool):
     send_stream, recv_stream = trio.testing.memory_stream_one_way_pair()
 
     async def q_2_stream(_queue, _stream):
-        """Sends to a temporary stream so that we can retrieve it by byte lengths with
+        """Sends to a temporary stream so that we can retrieve it by num bytes with
         the parser.
         """
         try:
@@ -100,35 +100,41 @@ async def proxy_streams(stream, _pubkey: str, stream_init: bool, q_init: bool):
 
 
 async def handle_inbound(_pubkey):
-    log(f"Handling new incoming connection from pubkey: {_pubkey}")
-    # first connect to our local C-Lightning node
-    stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
-    log("Connection made to local C-Lightning node")
-    # next proxy between the queue and the socket
-    await proxy_streams(stream, _pubkey, stream_init=False, q_init=True)
+    try:
+        log(f"Handling new incoming connection from pubkey: {_pubkey}")
+        # first connect to our local C-Lightning node.
+        stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+        log("Connection made to local C-Lightning node")
+        # next proxy between the queue and the socket.
+        await proxy_streams(stream, _pubkey, stream_init=False, q_init=True)
+    except Exception as e:
+        print(f"handle_outbound: {e}")
 
 
 async def handle_outbound(stream, pubkey: str):
     """Started for each outbound connection.
     """
-    _pubkey = pubkey[0:4]
-    log(f"Handling new outbound connection to {_pubkey}")
-    if pubkey not in config.QUEUE:
-        util.create_queue(_pubkey)
-    log(f"Created mesh queue for {_pubkey}")
-    await proxy_streams(stream, _pubkey, stream_init=True, q_init=False)
+    try:
+        _pubkey = pubkey[0:4]
+        log(f"Handling new outbound connection to {_pubkey}")
+        if pubkey not in config.QUEUE:
+            util.create_queue(_pubkey)
+            log(f"Created mesh queue for {_pubkey}")
+        await proxy_streams(stream, _pubkey, stream_init=True, q_init=False)
+    except Exception as e:
+        print(f"handle_outbound: {e}")
 
 
 async def serve_outbound(listen_addr, pubkey: str):
     """Serve a listening socket at listen_addr.
     Start a handler for each new connection.
     """
-    # Setup the listening socket
+    # Setup the listening socket.
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
     log(f"Listening for new outbound connection on {listen_addr}")
-    # Start a single handle_outbound for each connection
+    # Start a single handle_outbound for each connection.
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(

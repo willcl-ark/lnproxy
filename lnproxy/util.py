@@ -145,7 +145,7 @@ def get_GID(pk: bytes):
     config.log(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}", level="error")
 
 
-def rate_dec(private=False):
+def rate_dec():
     def rate_limit(func):
         """Smart rate-limiter
         """

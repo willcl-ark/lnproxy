@@ -63,9 +63,11 @@ class Connection:
 
     @staticmethod
     async def parse_recv_mesh_msg(msg: bytes):
+        print("Parsing msg recvd from mesh")
         _to = msg[0:2].hex()
         _from = msg[2:4].hex()
         _msg = msg[4:]
+        print(f"to: {_to}, from: {_from}, msg: {_msg}")
         # If we don't have a queue, make one and start a daemon to manage connection
         if _from not in config.QUEUE:
             util.create_queue(_from)
@@ -74,6 +76,7 @@ class Connection:
                 proxy.handle_inbound, _from,
             )
         config.QUEUE[_from]["recvd"].put(_msg)
+        print(f"Put message from {_from} onto queue")
 
     async def send_queue_daemon(self):
         """Monitors all queues and puts all messages in general send queue.
@@ -86,12 +89,18 @@ class Connection:
                 await trio.sleep(1)
             # we have connections to check
             else:
+                print(
+                    f"send_queue_daemon: queues: {[q[0] for q in config.QUEUE.items()]}"
+                )
                 for pubkey in config.QUEUE.items():
+                    print(f"send_queue_daemon: in queue for pubkey: {pubkey[0]}")
                     if pubkey[1]["to_send"].empty():
+                        print(f"{pubkey[1]} queue empty")
                         await trio.sleep(1)
                     else:
                         # Message headers are first 4B of TO and FROM pubkeys
                         header = pubkey[0][0:4] + config.node_info["id"][0:4]
+                        print(f"send_queue_daemon: header: {header}")
                         if not pubkey[1]["to_send"].empty():
                             # grab the message
                             msg = pubkey[1]["to_send"].get()
@@ -106,7 +115,7 @@ class Connection:
                             for message in msg_iter:
                                 self.send_msg_q.put(message)
 
-    @util.rate_dec(private=True)
+    @util.rate_dec()
     def send_from_queue(self, msg):
         # lookup the recipient GID
         to_pk = msg[0:2]
@@ -122,7 +131,9 @@ class Connection:
         log("Started send_handler", level="debug")
         while True:
             if not self.send_msg_q.empty():
-                self.send_from_queue(self.send_msg_q.get())
+                msg = self.send_msg_q.get()
+                print(f"send_handler: got message from queue: {msg}")
+                self.send_from_queue(msg)
             else:
                 await trio.sleep(1)
 
