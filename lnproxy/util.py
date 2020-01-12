@@ -1,19 +1,16 @@
 import contextvars
 import functools
-import itertools
 import pathlib
-import time
 import struct
-import queue
+import time
+import traceback
+
+import trio
 
 import lnproxy.config as config
 
-# import lnproxy.pk_from_hsm as extract_pk_from_hsm
-
-# Global counter for the connection log messages
-COUNTER = itertools.count()
 # Context variable for the connection log messages
-request_info = contextvars.ContextVar("request_info")
+pubkey_var = contextvars.ContextVar("pubkey")
 
 
 def unlink_socket(address: str):
@@ -23,9 +20,9 @@ def unlink_socket(address: str):
     try:
         socket_path.unlink()
     except OSError:
-        # Only config.log an error if the path exists but we can't unlink it, else ignore
+        # Only log an error if the path exists but we can't unlink it, else ignore
         if socket_path.exists():
-            config.log(f"Couldn't unlink socket {address}", level="debug")
+            log(f"Couldn't unlink socket {address}", level="debug")
 
 
 def get_my_payment_hashes() -> list:
@@ -51,7 +48,7 @@ def get_short_chan_id(source: hex, dest: hex) -> bytes:
     block_height = int(block_height)
     tx_index = int(tx_index)
     output_index = int(output_index)
-    config.log(
+    log(
         f"Got short channel ID: {block_height}x{tx_index}x{output_index}", level="debug"
     )
 
@@ -67,18 +64,11 @@ def check_onion_tool() -> bool:
     onion = pathlib.Path(config.ONION_TOOL)
     if onion.exists() and onion.is_file():
         return True
-    config.log(f"Onion tool not found at {config.ONION_TOOL}", level="error")
+    log(f"Onion tool not found at {config.ONION_TOOL}", level="error")
     config.ONION_TOOL = input(
         "Please enter the exact path to C-Lightning onion" "tool:\n"
     )
     return False
-
-
-# def get_regtest_privkeys(nodes):
-#     keys = []
-#     for node in nodes:
-#         keys.append(extract_pk_from_hsm.get_privkey(node))
-#     return keys
 
 
 def hex_dump(data, length=16):
@@ -93,42 +83,52 @@ def hex_dump(data, length=16):
         printable = "".join(["%s" % ((x <= 127 and _filter[x]) or ".") for x in chars])
         lines.append("%04x  %-*s  %s\n" % (c, length * 3, _hex, printable))
     result = "\n" + "".join(lines)
-    config.log(result, level="debug")
+    log(result, level="debug")
 
 
-async def receive_exactly(stream, length: int, timeout: int = 30) -> bytes:
-    res = b""
-    while len(res) < length and time.time() < (time.time() + timeout):
-        res += await stream.receive_some(length - len(res))
-    if len(res) == length:
-        # config.log(f"Received exactly {length} bytes!")
-        return res
-    else:
-        config.log(
-            "Didn't receive enough bytes within the timeout, "
-            "attempting to continue anyway!!",
-            level="warn",
-        )
-        return res
+async def receive_exactly(stream, length: int) -> bytes:
+    """Receive an exact number of bytes from a Stream.
+    """
+    res = bytearray()
+    # log(f"Receive_exactly trying to receive {length} bytes from {type(stream)}")
+    while len(res) < length:
+        try:
+            res += await stream.receive_some(length - len(res))
+        except Exception:
+            log(f"receive_exactly exception: {traceback.format_exc()}")
+        else:
+            # log(f"receive_exactly got {len(res)} bytes from {type(stream)}")
+            ...
+    return res
 
 
-# def log(msg, level="debug"):
-#     """Logs a message using the context var.
-#     """
-#     try:
-#         # Get the appropriate context variable
-#         request_tag = request_info.get()
-#         # Log the message
-#         config.plugin.log(f"Conn {request_tag}: {msg}", level=level)
-#     # if rpc not configured or request_tag not setup yet, just print
-#     except (AttributeError, LookupError):
-#         print(f"{level.upper()}: {msg}")
-
-
-def create_queue(pubkey: str):
+async def create_queue(pubkey: str):
+    """Creates a pair of memory_streams for each pubkey.
+    """
     assert len(pubkey) == 4
-    config.QUEUE[pubkey] = {"to_send": queue.Queue(), "recvd": queue.Queue()}
-    config.log(f"Created queues at: config.QUEUE[{pubkey}]")
+    config.QUEUE[pubkey] = {
+        # We put whole messages as objects into a memory_channel for mesh sending
+        "to_send": trio.open_memory_channel(50),
+        # We can use a simpler memory_stream for received data as it's often partial
+        "recvd": trio.testing.memory_stream_one_way_pair(),
+    }
+    log(f"Created queues at: config.QUEUE[{pubkey}]")
+
+
+def log(msg, level="info"):
+    level = "info"
+    try:
+        config.logger(f"{pubkey_var.get()} | {msg}", level=level)
+    except LookupError:
+        # contextvar not set yet
+        try:
+            config.logger(f"{msg}", level=level)
+        except TypeError:
+            # logger not defined yet by plugin
+            print(f"{level.upper()}: {msg}")
+        except AttributeError:
+            # object doesn't support .split()
+            print(f"{level.upper()}: {str(msg)}")
 
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
@@ -138,11 +138,11 @@ def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
         yield (prefix + data[i : i + chunk_len])
 
 
-def get_GID(pk: bytes):
+def get_gid(pk: bytes):
     for key in config.nodes.keys():
         if key.startswith(pk.hex()):
             return config.nodes.get(key)
-    config.log(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}", level="error")
+    log(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}", level="error")
 
 
 def rate_dec():
@@ -158,39 +158,26 @@ def rate_dec():
             else:
                 per_min = 5  # if not private else 8
             min_interval = 1
-
             # add this send time to the list
             config.SEND_TIMES.append(time.time())
-
             # if we've not sent before, send!
             if len(config.SEND_TIMES) <= 1:
-                config.log("Not sent before... sending immediately", level="debug")
-
+                ...
             # if we've not sent 'per_min' in total, sleep & send!
             elif len(config.SEND_TIMES) < per_min + 1:
-                config.log(
-                    f"Not sent {per_min}, sleeping {min_interval}s and sending",
-                    level="debug",
-                )
                 time.sleep(min_interval)
-
             # if our 'per_min'-th oldest is older than 'per_min' secs ago, go!
             elif config.SEND_TIMES[-(per_min + 1)] < (time.time() - 60):
-                config.log(
-                    f"{per_min}th oldest is older than 60 secs... sending immediately",
-                    level="debug",
-                )
-
+                time.sleep(min_interval)
             # wait the required time
             else:
                 wait = int(60 - (time.time() - config.SEND_TIMES[-(per_min + 1)])) + 1
-                config.log(f"Waiting {wait}s before send...")
+                log(f"Waiting {wait}s before send...")
                 interval = 1
                 for remaining in range(wait, 0, interval * -1):
                     if remaining % 10 == 0:
-                        config.log(f"{remaining}s remaining before next mesh send...")
+                        log(f"{remaining}s remaining before next mesh send...")
                     time.sleep(1)
-
             # execute the send
             return func(*args, **kwargs)
 

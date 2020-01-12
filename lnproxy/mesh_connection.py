@@ -1,23 +1,14 @@
-#  Copyright 2019 Will Clark
-#
-#  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-#
-#  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-#
-#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 import queue
 import time
-import trio
-import trio.testing
 
 import goTenna
+import trio
+import trio.testing
 
 import lnproxy.config as config
 import lnproxy.private as priv
 import lnproxy.proxy as proxy
 import lnproxy.util as util
-
 
 # For SPI connection only, set SPI_CONNECTION to true with proper SPI settings
 SPI_CONNECTION = False
@@ -26,7 +17,7 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-log = config.log
+log = util.log
 
 
 class Connection:
@@ -35,6 +26,7 @@ class Connection:
 
     def __init__(self, debug=False):
         log("Initialising goTenna Connection object", level="debug")
+        self.active = False
         self.api_thread = None
         self.status = {}
         self.in_flight_events = {}
@@ -52,94 +44,61 @@ class Connection:
         self.geo_region = 2
         self.sdk_token = priv.sdk_token
         self.debug = debug
-        self.send_msg_q = queue.Queue()
+        self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
         self.recv_msg_q = queue.Queue()
+        self.start_handlers()
         self.configure()
-        # start the handlers
+        self.active = True
+        log("goTenna Connection object initialised", level="debug")
+
+    def start_handlers(self):
+        # start the queue handlers in the main nursery
         config.nursery.start_soon(self.send_handler)
         config.nursery.start_soon(self.recv_handler)
-        config.nursery.start_soon(self.send_queue_daemon)
-        log("goTenna Connection object initialised", level="debug")
+        log("goTenna Connection handlers started", level="debug")
 
     @staticmethod
     async def parse_recv_mesh_msg(msg: bytes):
-        print("Parsing msg recvd from mesh")
+        """Parses the header of a received message.
+        If a queue does not exist for this pubkey, then it creates the required queues
+        and will start a new `handle_inbound` (in the main nursery) which will monitor
+        this queue
+        """
+        # log("Parsing msg recvd from mesh")
         _to = msg[0:2].hex()
         _from = msg[2:4].hex()
         _msg = msg[4:]
-        print(f"to: {_to}, from: {_from}, msg: {_msg}")
+        # log(f"to: {_to}, from: {_from}, msg: {_msg}")
         # If we don't have a queue, make one and start a daemon to manage connection
         if _from not in config.QUEUE:
-            util.create_queue(_from)
-            # start a new recv daemon
-            config.nursery.start_soon(
-                proxy.handle_inbound, _from,
-            )
-        config.QUEUE[_from]["recvd"].put(_msg)
-        print(f"Put message from {_from} onto queue")
-
-    async def send_queue_daemon(self):
-        """Monitors all queues and puts all messages in general send queue.
-        Splits each message up into 200B segments and appends the appropriate header.
-        """
-        log("Started mesh_queue_daemon", level="debug")
-        while True:
-            # no connections yet
-            if len(config.QUEUE.items()) == 0:
-                await trio.sleep(1)
-            # we have connections to check
-            else:
-                print(
-                    f"send_queue_daemon: queues: {[q[0] for q in config.QUEUE.items()]}"
-                )
-                for pubkey in config.QUEUE.items():
-                    print(f"send_queue_daemon: in queue for pubkey: {pubkey[0]}")
-                    if pubkey[1]["to_send"].empty():
-                        print(f"{pubkey[1]} queue empty")
-                        await trio.sleep(1)
-                    else:
-                        # Message headers are first 4B of TO and FROM pubkeys
-                        header = pubkey[0][0:4] + config.node_info["id"][0:4]
-                        print(f"send_queue_daemon: header: {header}")
-                        if not pubkey[1]["to_send"].empty():
-                            # grab the message
-                            msg = pubkey[1]["to_send"].get()
-
-                            # split it into 200B chunks and add header
-                            msg_iter = util.chunk_to_list(
-                                msg, 200, bytes.fromhex(header)
-                            )
-
-                            # stick it onto the mesh send queue for 'send_from_queue' to
-                            # find and send
-                            for message in msg_iter:
-                                self.send_msg_q.put(message)
+            await util.create_queue(_from)
+            # start a new handle_inbound for this connection
+            await config.nursery.start(proxy.handle_inbound, _from)
+        await config.QUEUE[_from]["recvd"][0].send_all(_msg)
+        # log(f"Put message from {_from} onto queue")
 
     @util.rate_dec()
-    def send_from_queue(self, msg):
+    async def lookup_and_send(self, msg):
         # lookup the recipient GID
         to_pk = msg[0:2]
-        to_GID = util.get_GID(to_pk)
-        log(f"Sending message {msg.hex()} to GID:{to_GID}", level="debug")
+        to_gid = util.get_gid(to_pk)
+        # log(f"Sending message {msg.hex()} to GID:{to_gid}", level="debug")
 
-        # send to GID using private message
-        self.send_private(to_GID, msg, binary=True)
+        # send to GID using private message in binary mode
+        self.send_private(to_gid, msg, binary=True)
 
     async def send_handler(self):
-        """Handle messages to be sent via the mesh.
+        """Monitors the shared send message queue and sends each message to the correct
+        GID based on lookup table.
         """
         log("Started send_handler", level="debug")
-        while True:
-            if not self.send_msg_q.empty():
-                msg = self.send_msg_q.get()
-                print(f"send_handler: got message from queue: {msg}")
-                self.send_from_queue(msg)
-            else:
-                await trio.sleep(1)
+        async for msg in self.send_mesh_recv:
+            await self.lookup_and_send(msg)
 
     async def recv_handler(self):
-        """Handle messages received from the mesh.
-        Put them in the right queue.
+        """Handle all messages received from the mesh.
+        Put them in the right (memory_stream) queue by passing them to
+        self.parse_recv_mesh_msg().
         """
         log("Started recv_handler", level="debug")
         while True:
@@ -164,7 +123,7 @@ class Connection:
         """set sdk_token for the connection
         """
         if self.api_thread:
-            log("To change SDK tokens, restart the app.", level="warn")
+            log("To change SDK tokens, restart the app.", level="error")
             return
         try:
             if not SPI_CONNECTION:

@@ -6,6 +6,8 @@ import lnproxy.onion as onion
 import lnproxy.util as util
 
 
+log = util.log
+
 codes = {
     16: "init",
     17: "error",
@@ -53,11 +55,11 @@ def deserialize_htlc_payload(payload: bytes,) -> Tuple[bytes, int, int, bytes, i
     payment_hash = struct.unpack(config.le_32b, payload[48:80])[0]
     cltv_expiry = struct.unpack(config.be_u32, payload[80:84])[0]
 
-    config.log(f"channel_id: {channel_id.hex()}")
-    config.log(f"id: {_id}")
-    config.log(f"amount_msat: {amount_msat}")
-    config.log(f"payment_hash: {payment_hash.hex()}")
-    config.log(f"cltv_expiry: {cltv_expiry}")
+    log(f"channel_id: {channel_id.hex()}")
+    log(f"id: {_id}")
+    log(f"amount_msat: {amount_msat}")
+    log(f"payment_hash: {payment_hash.hex()}")
+    log(f"cltv_expiry: {cltv_expiry}")
 
     return channel_id, _id, amount_msat, payment_hash, cltv_expiry
 
@@ -73,18 +75,16 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
     # outbound htlc from local lightning node:
     if to_mesh:
         # chop off the onion before sending
-        config.log(
-            f"INFO: We are htlc initiator; chopping off onion before transmission"
-        )
+        log(f"INFO: We are htlc initiator; chopping off onion before transmission")
         return orig_payload[0:84]
 
     # htlc from external lightning node
     else:
         # generate a new onion as there won't be one
-        config.log(f"INFO: We are htlc recipient; generating new onion")
+        log(f"INFO: We are htlc recipient; generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            config.log("INFO: We're the final hop!")
+            log("INFO: We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
@@ -100,7 +100,7 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
             # first get next pubkey
             # TODO: remove hard-code!
             next_pubkey = util.get_next_pubkey(channel_id)
-            config.log("INFO: We're not the final hop...")
+            log("INFO: We're not the final hop...")
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=next_pubkey,
@@ -108,15 +108,16 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-        config.log(f"INFO: Generated onion\n{generated_onion}")
+        log(f"INFO: Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
         return orig_payload + generated_onion
 
 
-def parse(header: bytes, body: bytes,) -> Tuple[bytes, bytes]:
+def parse(header: bytes, body: bytes, to_mesh: bool) -> Tuple[bytes, bytes]:
     """Parse a lightning message, optionally modify and then return it
     """
+    direction = "Sent" if to_mesh else "Rcvd"
     # handle empty messages gracefully
     if body == b"":
         return header, body
@@ -127,12 +128,13 @@ def parse(header: bytes, body: bytes,) -> Tuple[bytes, bytes]:
 
     # filter unknown codes and return without processing
     if msg_code not in codes.keys():
-        config.log(
-            f"Message code not found in ln_msg.codes.keys(): {msg_code}", level="warn"
-        )
+        log(f"Message code not found in ln_msg.codes.keys(): {msg_code}", level="warn")
         return header, body
 
-    config.log(f"{codes.get(msg_code):<27s} | {len(msg_payload):>4d}B", level="debug")
+    log(
+        f"{direction} | {codes.get(msg_code):<27s} | {len(msg_payload):>4d}B",
+        level="debug",
+    )
 
     # # handle htlc_add_update
     # if msg_code == config.ADD_UPDATE_HTLC:
@@ -146,21 +148,29 @@ def parse(header: bytes, body: bytes,) -> Tuple[bytes, bytes]:
     return header, body
 
 
-async def handshake(stream, i: int, initiator: bool) -> bytes:
+async def read_handshake_msg(stream, i: int, initiator: bool) -> bytes:
     """Handles handshake messages.
     """
+    # log(f"Starting read_handshake {i}")
     hs_pkt_size = {True: [50, 66], False: [50]}
     # pass full 50 / 66 B messages transparently
     req_len = hs_pkt_size[initiator][i]
-    message = b""
-    message += await util.receive_exactly(stream, req_len)
+    message = bytearray()
+    # log(f"Trying receive_exactly for {req_len}B from read_handshake")
+    # message += await util.receive_exactly(stream, req_len)
+    message += await stream.receive_some(req_len)
     return message
 
 
-async def read_lightning_message(stream) -> bytes:
+async def read_lightning_msg(stream, to_mesh: bool) -> bytes:
     """Reads a full lightning message from a stream and returns the message.
     """
+    log(f"Starting read_lightning_message")
     # Bolt #8: Read exactly 18 bytes from the network buffer.
+    # log(
+    #     f"Waiting to receive_exactly for {config.MSG_HEADER}B  for header from "
+    #     f"read_lightning_message"
+    # )
     header = await util.receive_exactly(stream, config.MSG_HEADER)
 
     # Bolt #8: 2-byte message length
@@ -172,12 +182,20 @@ async def read_lightning_message(stream) -> bytes:
     # body_len_mac = 16 * (bytes.fromhex("00"))
 
     # Bolt #8: Lightning message
+    # log(
+    #     f"Waiting to receive_exactly for {body_len}B for body from read_lightning_"
+    #     f"message"
+    # )
     body = await util.receive_exactly(stream, body_len)
 
     # parse the message
-    header, body = parse(header, body)
+    header, body = parse(header, body, to_mesh)
 
     # Bolt #8: 16 Byte MAC of the Lightning message
+    # log(
+    #     f"Waiting to receive_exactly for {config.MSG_MAC}B for body_mac from "
+    #     f"read_lightning_message"
+    # )
     body_mac = await util.receive_exactly(stream, config.MSG_MAC)
     # TODO: we can add a fake MAC on here during full mesh operation
     # body_mac = 16 * (bytes.fromhex("00"))

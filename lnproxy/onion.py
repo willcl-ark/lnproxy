@@ -1,7 +1,6 @@
 import struct
 import subprocess
 
-
 import lnproxy.config as config
 import lnproxy.util as util
 

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 # BigSize struct formatting codes
 be_u8: str = ">B"
 be_u16: str = ">H"
@@ -19,47 +18,36 @@ MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 
-# System-agnostic home path generator
+# System-agnostic home-path generator
 home = str(Path.home())
 lnproxy_home = f"{home}/.lnproxy"
 Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
-# Onion tool
+# Onion tool path
 ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
 
 # Plugin
 plugin = None
+rpc_s = {1: None, 2: None, 3: None}
 rpc = None
 logger = None
-
-
-def log(msg, level="info"):
-    try:
-        logger(msg, level=level)
-    except TypeError:
-        # logger not defined yet by plugin
-        print(f"{level.upper()}: {msg}")
-    except AttributeError:
-        # object doesn't support .split()
-        print(f"{level.upper()}: {str(msg)}")
-
 
 # Trio
 nursery = None
 trio_token = None
 QUEUE = {}
-SEND_TIMES = []
 
 # Lightning node pubkey: GID
 nodes = {
-    "034ba4f511b5441477e346bc0d9602e3f133aae1dc698efc94411b90fb63a037e7": 10000001,
-    "03659adf5822a021102e93c1e9a2161d680694435480a47065a0b70e68b90c6bc8": 10000002,
-    "03438950f77ee32afd7e3e1ad78b7f349aa905345b005f66fb9c0788eb5a0a68ed": 10000003,
+    "02492bb1fb0eca426af73c189d115fcda79fa9a2f77783e8d9bda4c64e5716af94": 10000001,
+    "03512298acad7fb9b6d2a8096cfe231ead64ae81cc29c78e23329f745d633a5590": 10000002,
+    "026e962239a803c0f005751e60ac1e09772fcce206d0a1b666319423017142d879": 10000003,
 }
 node_info = None
 
 # goTenna Mesh
 mesh_conn = None
+SEND_TIMES = []
 UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute
