@@ -24,7 +24,7 @@ lnproxy_home = f"{home}/.lnproxy"
 Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
 # Onion tool path
-ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
 
 # Plugin
 plugin = None

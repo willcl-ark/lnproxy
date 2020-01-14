@@ -65,9 +65,6 @@ def check_onion_tool() -> bool:
     if onion.exists() and onion.is_file():
         return True
     log(f"Onion tool not found at {config.ONION_TOOL}", level="error")
-    config.ONION_TOOL = input(
-        "Please enter the exact path to C-Lightning onion" "tool:\n"
-    )
     return False
 
 
@@ -108,9 +105,9 @@ async def create_queue(pubkey: str):
     assert len(pubkey) == 4
     config.QUEUE[pubkey] = {
         # We put whole messages as objects into a memory_channel for mesh sending
-        "to_send": trio.open_memory_channel(50),
+        "outbound": trio.open_memory_channel(50),
         # We can use a simpler memory_stream for received data as it's often partial
-        "recvd": trio.testing.memory_stream_one_way_pair(),
+        "inbound": trio.testing.memory_stream_one_way_pair(),
     }
     log(f"Created queues at: config.QUEUE[{pubkey}]")
 

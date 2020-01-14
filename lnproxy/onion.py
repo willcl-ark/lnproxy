@@ -5,6 +5,9 @@ import lnproxy.config as config
 import lnproxy.util as util
 
 
+log = util.log
+
+
 def decode_hop_data(hop_data: bytes, layer=0):
     """Decode a legacy 'hop_data' payload
     https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
@@ -16,8 +19,7 @@ def decode_hop_data(hop_data: bytes, layer=0):
     amt_to_forward = struct.unpack_from(config.be_u64, hop_data, 8 + off)[0]
     outgoing_cltv_value = struct.unpack_from(config.be_u32, hop_data, 16 + off)[0]
     padding = struct.unpack_from("12B", hop_data, 20 + off)[0]
-    print(
-        "DEBUG: \n"
+    log(
         f"Decoded payload layer {layer}:\n"
         f"\tShort channel id: {short_channel_id}\n"
         f"\tAmt to forward: {amt_to_forward}\n"
@@ -55,8 +57,7 @@ def generate_new(
     """Generates a new onion with our_pubkey as this hop, and next_pubkey as
     'final hop'
     """
-    print(
-        "DEBUG: "
+    log(
         f"my_pubkey: {my_pubkey}, amount_msat: {amount_msat}, "
         f"payment_hash: {payment_hash.hex()}, "
         f"cltv_expiry: {cltv_expiry}"
@@ -70,8 +71,7 @@ def generate_new(
         # Bolt #7: MUST NOT include short_channel_id for the final node.
         next_hop_id = struct.pack(config.be_u64, 0)
         next_hop_data = encode_hop_data(next_hop_id, amount_msat, cltv_expiry).hex()
-        print(
-            "DEBUG: "
+        log(
             f"Generating new onion using command:\n'devtools/onion generate "
             f"{my_pubkey}/{first_hop_data} {next_pubkey}/{next_hop_data} --assoc-data "
             f"{payment_hash.hex()}'"
@@ -105,9 +105,9 @@ def generate_new(
     gen_onion = onion_tool.stdout.decode()
 
     if onion_tool.stdout == b"":
-        print(f"ERROR: from onion tool: {onion_tool.stdout.decode()}")
-    print(f"DEBUG: Created onion: type: {type(gen_onion)}, data: {gen_onion}")
+        log(f"Error from onion tool: {onion_tool.stdout.decode()}")
+    log(f"Created onion: type: {type(gen_onion)}, data: {gen_onion}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
-    print("INFO: Generated onion!")
-    print(f"DEBUG: Onion hex:\n{gen_onion_bytes.hex()}")
+    log("Generated onion!")
+    log(f"Onion hex:\n{gen_onion_bytes.hex()}")
     return gen_onion_bytes

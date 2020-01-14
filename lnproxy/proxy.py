@@ -26,7 +26,7 @@ async def send_queue_daemon():
             for pubkey in pubkeys:
                 # log(f"send_queue_daemon: in queue for pubkey: {pubkey[0]}")
                 try:
-                    msg = pubkey[1]["to_send"][1].receive_nowait()
+                    msg = pubkey[1]["outbound"][1].receive_nowait()
                 except trio.WouldBlock:
                     await trio.sleep(0.1)
                 else:
@@ -44,19 +44,18 @@ async def read_message(
 ) -> bytes:
     """A stream reader which reads a handshake or lightning message and returns it.
     """
-    # log(f"Starting to read message {i}")
     if i < hs_acts:
         message = await ln_msg.read_handshake_msg(stream, i, initiator)
-        log(
-            f"Read HS message {i} {'from local' if to_mesh else 'from mesh'}",
-            level="debug",
-        )
+        # log(
+        #     f"Read HS message {i} {'from local' if to_mesh else 'from mesh'}",
+        #     level="debug",
+        # )
     else:
         message = await ln_msg.read_lightning_msg(stream, to_mesh)
-        log(
-            f"Read lightning message {i - hs_acts} {'from local' if to_mesh else 'from mesh'}",
-            level="debug",
-        )
+        # log(
+        #     f"Read lightning message {i - hs_acts} {'from local' if to_mesh else 'from mesh'}",
+        #     level="debug",
+        # )
     return message
 
 
@@ -95,10 +94,10 @@ async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
     log(f"Proxying between local node and {_pubkey}")
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
-            proxy, stream, config.QUEUE[_pubkey]["to_send"][0], stream_init, True
+            proxy, stream, config.QUEUE[_pubkey]["outbound"][0], stream_init, True
         )
         nursery.start_soon(
-            proxy, config.QUEUE[_pubkey]["recvd"][1], stream, q_init, False
+            proxy, config.QUEUE[_pubkey]["inbound"][1], stream, q_init, False
         )
 
 

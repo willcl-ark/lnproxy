@@ -75,16 +75,16 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
     # outbound htlc from local lightning node:
     if to_mesh:
         # chop off the onion before sending
-        log(f"INFO: We are htlc initiator; chopping off onion before transmission")
+        log(f"We are htlc initiator; chopping off onion before transmission")
         return orig_payload[0:84]
 
     # htlc from external lightning node
     else:
         # generate a new onion as there won't be one
-        log(f"INFO: We are htlc recipient; generating new onion")
+        log(f"We are htlc recipient; generating new onion")
         # determine whether we are the final hop or not
         if payment_hash.hex() in util.get_my_payment_hashes():
-            log("INFO: We're the final hop!")
+            log("We're the final hop!")
             # if we are generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
@@ -100,7 +100,7 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
             # first get next pubkey
             # TODO: remove hard-code!
             next_pubkey = util.get_next_pubkey(channel_id)
-            log("INFO: We're not the final hop...")
+            log("We're not the final hop...")
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=next_pubkey,
@@ -108,7 +108,7 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-        log(f"INFO: Generated onion\n{generated_onion}")
+        log(f"Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
         return orig_payload + generated_onion
@@ -165,12 +165,7 @@ async def read_handshake_msg(stream, i: int, initiator: bool) -> bytes:
 async def read_lightning_msg(stream, to_mesh: bool) -> bytes:
     """Reads a full lightning message from a stream and returns the message.
     """
-    log(f"Starting read_lightning_message")
     # Bolt #8: Read exactly 18 bytes from the network buffer.
-    # log(
-    #     f"Waiting to receive_exactly for {config.MSG_HEADER}B  for header from "
-    #     f"read_lightning_message"
-    # )
     header = await util.receive_exactly(stream, config.MSG_HEADER)
 
     # Bolt #8: 2-byte message length
@@ -182,20 +177,12 @@ async def read_lightning_msg(stream, to_mesh: bool) -> bytes:
     # body_len_mac = 16 * (bytes.fromhex("00"))
 
     # Bolt #8: Lightning message
-    # log(
-    #     f"Waiting to receive_exactly for {body_len}B for body from read_lightning_"
-    #     f"message"
-    # )
     body = await util.receive_exactly(stream, body_len)
 
     # parse the message
     header, body = parse(header, body, to_mesh)
 
     # Bolt #8: 16 Byte MAC of the Lightning message
-    # log(
-    #     f"Waiting to receive_exactly for {config.MSG_MAC}B for body_mac from "
-    #     f"read_lightning_message"
-    # )
     body_mac = await util.receive_exactly(stream, config.MSG_MAC)
     # TODO: we can add a fake MAC on here during full mesh operation
     # body_mac = 16 * (bytes.fromhex("00"))

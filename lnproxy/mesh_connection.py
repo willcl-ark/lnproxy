@@ -74,7 +74,7 @@ class Connection:
             await util.create_queue(_from)
             # start a new handle_inbound for this connection
             await config.nursery.start(proxy.handle_inbound, _from)
-        await config.QUEUE[_from]["recvd"][0].send_all(_msg)
+        await config.QUEUE[_from]["inbound"][0].send_all(_msg)
         # log(f"Put message from {_from} onto queue")
 
     @util.rate_dec()
