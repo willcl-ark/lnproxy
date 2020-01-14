@@ -54,7 +54,7 @@ except RpcError:
 
 # check status with waitsendpay
 try:
-    res = rpc1.waitsendpay(payment_hash=inv["payment_hash"], timeout=10)
+    res = rpc1.waitsendpay(payment_hash=inv["payment_hash"], timeout=120)
 except RpcError:
     raise
 

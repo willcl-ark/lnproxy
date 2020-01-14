@@ -33,6 +33,33 @@ def get_my_payment_hashes() -> list:
     ]
 
 
+def int2bytes(i, enc):
+    return i.to_bytes((i.bit_length() + 7) // 8, enc)
+
+
+def switch_hex_endianness(str, enc1, enc2):
+    return int2bytes(int.from_bytes(bytes.fromhex(str), enc1), enc2).hex()
+
+
+def get_next_pubkey(from_chan_id):
+    """Hack to get next pubkey from the perspective of a routing node.
+    Will check its connections, and return the next channel which it didn't just receive
+    from.
+    """
+    # get list of peer pubkeys and their channels
+    list_funds = config.rpc.listfunds()["channels"]
+
+    # convert funding_txid to BE
+    for channel in list_funds:
+        channel["funding_txid"] = switch_hex_endianness(
+            channel["funding_txid"], "little", "big"
+        )
+
+        # select the first one which isn't from_chan_id
+        if channel["funding_txid"] != from_chan_id.hex():
+            return channel["peer_id"]
+
+
 def get_short_chan_id(source: hex, dest: hex) -> bytes:
     channel = [
         channel
@@ -109,7 +136,7 @@ async def create_queue(pubkey: str):
         # We can use a simpler memory_stream for received data as it's often partial
         "inbound": trio.testing.memory_stream_one_way_pair(),
     }
-    log(f"Created queues at: config.QUEUE[{pubkey}]")
+    # log(f"Created queues at: config.QUEUE[{pubkey}]")
 
 
 def log(msg, level="info"):
