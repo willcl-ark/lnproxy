@@ -94,20 +94,21 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
                 cltv_expiry=cltv_expiry,
             )
         else:
-            # else generate an onion with our pk as first_hop and next hop pk as
-            # second_pubkey
-
-            # first get next pubkey
-            # TODO: remove hard-code!
-            next_pubkey = util.get_next_pubkey(channel_id)
+            # # else generate an onion with our pk as first_hop and next hop pk as
+            # # second_pubkey
+            #
+            # # first get next pubkey
+            # # TODO: remove hard-code!
+            # next_pubkey = util.get_next_pubkey(channel_id)
             log("We're not the final hop...")
-            generated_onion = onion.generate_new(
-                my_pubkey=config.rpc.getinfo()["id"],
-                next_pubkey=next_pubkey,
-                amount_msat=amount_msat,
-                payment_hash=payment_hash,
-                cltv_expiry=cltv_expiry - config.CLTV_d,
-            )
+            # generated_onion = onion.generate_new(
+            #     my_pubkey=config.rpc.getinfo()["id"],
+            #     next_pubkey=next_pubkey,
+            #     amount_msat=amount_msat,
+            #     payment_hash=payment_hash,
+            #     cltv_expiry=cltv_expiry - config.CLTV_d,
+            # )
+            ...
         log(f"Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
@@ -136,14 +137,14 @@ def parse(header: bytes, body: bytes, to_mesh: bool) -> Tuple[bytes, bytes]:
         level="debug",
     )
 
-    # # handle htlc_add_update
-    # if msg_code == config.ADD_UPDATE_HTLC:
-    #     body = msg_type + parse_update_add_htlc(msg_payload, to_mesh)
-    #     # recompute header based on length of msg without onion
-    #     _header = b""
-    #     _header += struct.pack(">H", len(body))
-    #     _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
-    #     return _header, body
+    # handle htlc_add_update
+    if msg_code == config.ADD_UPDATE_HTLC:
+        body = msg_type + parse_update_add_htlc(msg_payload, to_mesh)
+        # recompute header based on length of msg without onion
+        _header = b""
+        _header += struct.pack(">H", len(body))
+        _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
+        return _header, body
 
     return header, body
 
