@@ -21,8 +21,9 @@ async def send_queue_daemon():
             # No connections yet
             await trio.sleep(0.1)
         else:
+            pubkeys = list(config.QUEUE.items())
             # We have connections to check
-            for pubkey in config.QUEUE.items():
+            for pubkey in pubkeys:
                 # log(f"send_queue_daemon: in queue for pubkey: {pubkey[0]}")
                 try:
                     msg = pubkey[1]["to_send"][1].receive_nowait()
