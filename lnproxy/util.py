@@ -33,15 +33,15 @@ def get_my_payment_hashes() -> list:
     ]
 
 
-def int2bytes(i, enc):
+def int2bytes(i: int, enc: str) -> bytes:
     return i.to_bytes((i.bit_length() + 7) // 8, enc)
 
 
-def switch_hex_endianness(str, enc1, enc2):
-    return int2bytes(int.from_bytes(bytes.fromhex(str), enc1), enc2).hex()
+def switch_hex_endianness(str_in: hex, enc1: str, enc2: str):
+    return int2bytes(int.from_bytes(bytes.fromhex(str_in), enc1), enc2).hex()
 
 
-def get_next_pubkey(from_chan_id):
+def get_next_pubkey(from_chan_id: bytes):
     """Hack to get next pubkey from the perspective of a routing node.
     Will check its connections, and return the next channel which it didn't just receive
     from.
@@ -61,6 +61,8 @@ def get_next_pubkey(from_chan_id):
 
 
 def get_short_chan_id(source: hex, dest: hex) -> bytes:
+    """Return a short channel id (bytes) based on source and destination provided.
+    """
     channel = [
         channel
         for channel in config.rpc.listchannels(source=source)["channels"]
@@ -79,7 +81,7 @@ def get_short_chan_id(source: hex, dest: hex) -> bytes:
         f"Got short channel ID: {block_height}x{tx_index}x{output_index}", level="debug"
     )
 
-    _id = b""
+    _id = bytearray()
     # 3 bytes for block height and tx_index
     _id += struct.pack(config.be_u32, block_height)[-3:]
     _id += struct.pack(config.be_u32, tx_index)[-3:]
@@ -111,23 +113,21 @@ def hex_dump(data, length=16):
 
 
 async def receive_exactly(stream, length: int) -> bytes:
-    """Receive an exact number of bytes from a Stream.
+    """Receive an exact number of bytes from a trio.SocketStream or a
+    trio.testing.MemoryReceiveStream.
     """
     res = bytearray()
-    # log(f"Receive_exactly trying to receive {length} bytes from {type(stream)}")
     while len(res) < length:
         try:
             res += await stream.receive_some(length - len(res))
         except Exception:
             log(f"receive_exactly exception: {traceback.format_exc()}")
-        else:
-            # log(f"receive_exactly got {len(res)} bytes from {type(stream)}")
-            ...
     return res
 
 
 async def create_queue(pubkey: str):
-    """Creates a pair of memory_streams for each pubkey.
+    """Creates a config.QUEUE entry for each pubkey.
+    Each pubkey has an outbound and inbound queue (stream)
     """
     assert len(pubkey) == 4
     config.QUEUE[pubkey] = {
@@ -136,33 +136,36 @@ async def create_queue(pubkey: str):
         # We can use a simpler memory_stream for received data as it's often partial
         "inbound": trio.testing.memory_stream_one_way_pair(),
     }
-    # log(f"Created queues at: config.QUEUE[{pubkey}]")
 
 
 def log(msg, level="info"):
+    """Logger which will attempt to log using contextvar and C-Lightning plugin logger.
+    """
     level = "info"
-    try:
-        config.logger(f"{pubkey_var.get()} | {msg}", level=level)
-    except LookupError:
-        # contextvar not set yet
+    msg = str(msg)
+    if config.logger:
         try:
+            # Try using C-Lightning plugin logger with contextvar
+            config.logger(f"{pubkey_var.get()} | {msg}", level=level)
+        except (LookupError, NameError):
+            # Contextvar not set yet, try raw plugin logger
             config.logger(f"{msg}", level=level)
-        except TypeError:
-            # logger not defined yet by plugin
-            print(f"{level.upper()}: {msg}")
-        except AttributeError:
-            # object doesn't support .split()
-            print(f"{level.upper()}: {str(msg)}")
+    else:
+        # Logger not defined yet by plugin
+        print(f"{level.upper()}: {msg}")
 
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
-    """Adds data of arbitrary length to a queue in a certain chunk size
+    """Adds data of arbitrary length to a queue in a certain chunk size and yields
+    result as an iterator.
     """
     for i in range(0, len(data), chunk_len):
         yield (prefix + data[i : i + chunk_len])
 
 
-def get_gid(pk: bytes):
+def get_gid(pk: bytes) -> int:
+    """Lookup the goTenna GID based on pubkey provided using hardcoded list in config.
+    """
     for key in config.nodes.keys():
         if key.startswith(pk.hex()):
             return config.nodes.get(key)
@@ -170,6 +173,11 @@ def get_gid(pk: bytes):
 
 
 def rate_dec():
+    """Limits how fast we should send goTenna messages (or at least send them to the
+    goTenna API thread.
+    We use a base of 5 per minute, with a minimum of 1 second between each transmission.
+    """
+
     def rate_limit(func):
         """Smart rate-limiter
         """

@@ -34,7 +34,6 @@ logger = None
 
 # Trio
 nursery = None
-trio_token = None
 QUEUE = {}
 
 # Lightning node pubkey: GID

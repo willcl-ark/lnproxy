@@ -12,7 +12,7 @@ Currently hardcoded values for a 3 node regtest, setup.
     
 * [pyenv](https://github.com/pyenv/pyenv) 
 
-* C-Lightning compiled with noencrypt.patch applied. The patch can be found in clightning dir of this project
+* C-Lightning compiled with noencrypt_final.patch applied. The patch can be found in clightning dir of this project
 
 
 ### General preparation
@@ -22,11 +22,11 @@ We will be cloning one or two code repositories, so let's keep things neat. If y
     mkdir ~/lnproxy_src && cd ~/lnproxy_src
     pyenv install 3.7.5 && pyenv local 3.7.5
 
-Now, we are ready to set the projects up...
+Now, we are ready to clone the two projects
 
 ### C Lightning preparation
 
-Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), if you followed above instruction you have already done this, or patching C-Lightning manually using the provided patch. To use the pre-patched branch:
+Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), or patching C-Lightning manually using the provided patch. To use the pre-patched branch:
 
     cd ~/lnproxy_src
     git clone https://github.com/willcl-ark/lightning.git
@@ -45,7 +45,7 @@ Start by installing the python dependency/package manager poetry (other install 
 
     curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
 
-Now we can do main clone and setup:
+Now clone and setup:
 
     cd ~/lnproxy_src
     git clone https://github.com/willcl-ark/lnproxy.git
@@ -61,14 +61,14 @@ Now we can do main clone and setup:
     mkdir -p ~/lnproxy_src/lnproxy && cd ~/lnproxy_src/lnproxy
     python3 -m venv .venv
     source .venv/bin/activate       # bash shell
-    source .venv/bin/activate.fish  # fish shell only
+    source .venv/bin/activate.fish  # fish shell 
     pip install lnproxy
     
 ### Fish shell 
 
 (Optional, but recommended)
 
-I have added to the C-Lightning contrib startup script in a fish shell version which provides a lot of useful helper functions for regtest environment testing. You can, and I recommend, installing fish shell (no need to make it your default shell, yet!) so that you can use them.
+I have added to the C-Lightning contrib startup scripts in a fish shell derivation which provides a lot of useful helper functions for testing. You can, and I recommend, installing fish shell (no need to make it your default shell, yet!) so that you can use them.
 
 On macOS, this is as easy as
 

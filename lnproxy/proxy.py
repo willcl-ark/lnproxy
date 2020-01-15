@@ -21,10 +21,11 @@ async def send_queue_daemon():
             # No connections yet
             await trio.sleep(0.1)
         else:
+            # We can't modify a dictionary during iteration so cast to a list each time
+            # and iterate over that.
             pubkeys = list(config.QUEUE.items())
             # We have connections to check
             for pubkey in pubkeys:
-                # log(f"send_queue_daemon: in queue for pubkey: {pubkey[0]}")
                 try:
                     msg = pubkey[1]["outbound"][1].receive_nowait()
                 except trio.WouldBlock:
@@ -46,22 +47,14 @@ async def read_message(
     """
     if i < hs_acts:
         message = await ln_msg.read_handshake_msg(stream, i, initiator)
-        # log(
-        #     f"Read HS message {i} {'from local' if to_mesh else 'from mesh'}",
-        #     level="debug",
-        # )
     else:
         message = await ln_msg.read_lightning_msg(stream, to_mesh)
-        # log(
-        #     f"Read lightning message {i - hs_acts} {'from local' if to_mesh else 'from mesh'}",
-        #     level="debug",
-        # )
     return message
 
 
 async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
-    """Read from a SocketStream and write to a memory_channel (the mesh "queue").
-    Will handle lightning message parsing for outbound messages.
+    """Read from a SocketStream and write to a trio.MemorySendChannel (the mesh "queue")
+    or a trio.SocketStream.
     """
     log(f"Starting proxy(), initiator={initiator}")
     i = 0
@@ -78,10 +71,8 @@ async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
         else:
             if type(write) == trio.MemorySendChannel:
                 await write.send(message)
-                # log("Sent message to memory_channel from stream")
             elif type(write) == trio.SocketStream:
                 await write.send_all(message)
-                # log("Sent message to SocketStream from stream")
             else:
                 log(
                     f"Unexpected write stream type in stream_to_memory_channel()\n"
@@ -91,6 +82,9 @@ async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
 
 
 async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
+    """Helper that runs each proxy operation (pair) in it's own nursery.
+    This means that an error with a single connection won't crash the whole program.
+    """
     log(f"Proxying between local node and {_pubkey}")
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
@@ -101,10 +95,13 @@ async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
         )
 
 
-async def handle_inbound(pubkey, task_status=trio.TASK_STATUS_IGNORED):
+async def handle_inbound(pubkey: str, task_status=trio.TASK_STATUS_IGNORED):
+    """Handle a new inbound connection from the mesh.
+    Will open a new connection to local C-Lightning node and then proxy the connections.
+    """
     util.pubkey_var.set(pubkey)
     log(f"Handling new incoming connection from pubkey: {pubkey}")
-    # first connect to our local C-Lightning node.
+    # First connect to our local C-Lightning node.
     try:
         stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
     except Exception:
@@ -114,34 +111,32 @@ async def handle_inbound(pubkey, task_status=trio.TASK_STATUS_IGNORED):
         # Report back to Trio that we've made the connection and are ready to receive
         task_status.started()
         # Next proxy between the queue and the socket.
-        # In the case we recieve a new connection via the mesh, `q_init` will be True,
-        # because this (mesh received queue) will contain the first handshake message.
-        # Conversely `stream_init` is False because they are handshake recipient.
+        # q_init is True because remote is handshake initiator.
         await proxy_nursery(stream, pubkey, stream_init=False, q_init=True)
 
 
-async def handle_outbound(stream, pubkey: str):
-    """Started for each outbound connection.
+async def handle_outbound(stream: trio.SocketStream, pubkey: str):
+    """Handles an outbound connection, creating the required (mesh) queues if necessary
+    and then proxying the connection with the mesh queue.
     """
     util.pubkey_var.set(pubkey[0:4])
     _pubkey = pubkey[0:4]
-    log(f"Handling new outbound connection to {_pubkey}")
+    log(f"Handling new outbound connection to pubkey: {_pubkey}")
     if pubkey not in config.QUEUE:
         await util.create_queue(_pubkey)
-        log(f"Created a new mesh queue for {_pubkey}")
-        # In the case we initiate a new connection from our local node `stream_init`
-        # will be True, because the stream will contain the first handshake message.
-        # Conversely `q_init` is False because they are handshake recipient.
-        await proxy_nursery(stream, _pubkey, stream_init=True, q_init=False)
+        # Next proxy between the queue and the socket.
+        # stream_init is True because we are handshake initiator.
+    await proxy_nursery(stream, _pubkey, stream_init=True, q_init=False)
 
 
 async def serve_outbound(
     listen_addr, pubkey: str, task_status=trio.TASK_STATUS_IGNORED
 ):
     """Serve a listening socket at listen_addr.
-    Start a handler for each new connection.
+    Start a single handle_outbound for the first connection received to this socket.
+    This will be run once per outbound connection made by C-Lightning (using rpc
+    `proxy-connect`) so that each connection has it's own socket address.
     """
-    log("Starting serve_outbound")
     # Setup the listening socket.
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)

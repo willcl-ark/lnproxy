@@ -108,7 +108,6 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
                 payment_hash=payment_hash,
                 cltv_expiry=cltv_expiry - config.CLTV_d,
             )
-        # log(f"Generated onion\n{generated_onion}")
 
         # add the new onion to original payload
         return orig_payload + generated_onion
@@ -136,7 +135,7 @@ def parse(header: bytes, body: bytes, to_mesh: bool) -> Tuple[bytes, bytes]:
         level="debug",
     )
 
-    # handle htlc_add_update
+    # handle htlc_add_update specially
     if msg_code == config.ADD_UPDATE_HTLC:
         body = msg_type + parse_update_add_htlc(msg_payload, to_mesh)
         # recompute header based on length of msg without onion

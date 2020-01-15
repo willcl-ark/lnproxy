@@ -62,43 +62,40 @@ class Connection:
         """Parses the header of a received message.
         If a queue does not exist for this pubkey, then it creates the required queues
         and will start a new `handle_inbound` (in the main nursery) which will monitor
-        this queue
+        this queue.
+        Puts the received message in the correct queue with header stripped.
         """
-        # log("Parsing msg recvd from mesh")
         _to = msg[0:2].hex()
         _from = msg[2:4].hex()
         _msg = msg[4:]
-        # log(f"to: {_to}, from: {_from}, msg: {_msg}")
         # If we don't have a queue, make one and start a daemon to manage connection
         if _from not in config.QUEUE:
             await util.create_queue(_from)
             # start a new handle_inbound for this connection
             await config.nursery.start(proxy.handle_inbound, _from)
         await config.QUEUE[_from]["inbound"][0].send_all(_msg)
-        # log(f"Put message from {_from} onto queue")
 
     @util.rate_dec()
     async def lookup_and_send(self, msg):
+        """Get a GID from the lookup table based on the "to" pk in the message header
+        and send the message via the mesh.
+        """
         # lookup the recipient GID
         to_pk = msg[0:2]
         to_gid = util.get_gid(to_pk)
-        # log(f"Sending message {msg.hex()} to GID:{to_gid}", level="debug")
-
         # send to GID using private message in binary mode
         self.send_private(to_gid, msg, binary=True)
 
     async def send_handler(self):
-        """Monitors the shared send message queue and sends each message to the correct
-        GID based on lookup table.
+        """Monitors the shared send message queue and sends each message it finds there.
         """
         log("Started send_handler", level="debug")
         async for msg in self.send_mesh_recv:
             await self.lookup_and_send(msg)
 
     async def recv_handler(self):
-        """Handle all messages received from the mesh.
-        Put them in the right (memory_stream) queue by passing them to
-        self.parse_recv_mesh_msg().
+        """Handles all messages received from the mesh.
+        Put them in the right queue (memory_stream).
         """
         log("Started recv_handler", level="debug")
         while True:
