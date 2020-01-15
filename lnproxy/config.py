@@ -36,18 +36,20 @@ logger = None
 nursery = None
 QUEUE = {}
 
-# Lightning node pubkey: GID
+# Lightning node
+# pubkey: GID
 nodes = {
     "02492bb1fb0eca426af73c189d115fcda79fa9a2f77783e8d9bda4c64e5716af94": 10000001,
     "03512298acad7fb9b6d2a8096cfe231ead64ae81cc29c78e23329f745d633a5590": 10000002,
     "026e962239a803c0f005751e60ac1e09772fcce206d0a1b666319423017142d879": 10000003,
 }
 node_info = None
+key_sends = {}
 
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
-sdk_token = None
+sdk_token = "HlkVBxcBHUUQREBCUQoCQwEXCkFDDlgOBBcMURoMAxMMDApeXEcJUVwdQhEeAxwI"
 UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute

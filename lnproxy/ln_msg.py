@@ -1,4 +1,6 @@
 import struct
+import uuid
+from hashlib import sha256
 from typing import Tuple
 
 import lnproxy.config as config
@@ -83,9 +85,23 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
         # generate a new onion as there won't be one
         log(f"We are htlc recipient; generating new onion")
         # determine whether we are the final hop or not
-        if payment_hash.hex() in util.get_my_payment_hashes():
+        my_secret = sha256(bytes.fromhex(config.node_info["id"][:64])).hexdigest()
+        log(f"my_secret:    {my_secret}\n" f"payment_hash: {payment_hash.hex()}")
+        if payment_hash.hex() == my_secret:
             log("We're the final hop!")
-            # if we are generate an onion with our pk as first_pubkey
+            # If we are, we need to add an invoice for this payment to satisfy
+            # invoice(msatoshi label description [expiry] [fallbacks] [preimage])
+            log(
+                config.rpc.invoice(
+                    msatoshi=amount_msat,
+                    label=uuid.uuid1().hex,
+                    description=uuid.uuid1().hex,
+                    expiry=cltv_expiry,
+                    preimage=config.node_info["id"][:64],
+                )
+            )
+
+            # Now we can generate an onion with our pk as first_pubkey
             generated_onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=None,

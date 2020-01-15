@@ -108,5 +108,5 @@ def generate_new(
         log(f"Error from onion tool: {onion_tool.stdout.decode()}")
     gen_onion_bytes = bytes.fromhex(gen_onion)
     log("Generated onion!")
-    log(f"Onion hex:\n{gen_onion_bytes.hex()}")
+    # log(f"Onion hex:\n{gen_onion_bytes.hex()}")
     return gen_onion_bytes

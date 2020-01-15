@@ -2,6 +2,7 @@
 import time
 import traceback
 import uuid
+from hashlib import sha256
 from pathlib import Path
 
 import trio
@@ -48,6 +49,49 @@ def proxy_connect(pubkey, plugin=None):
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
     return plugin.rpc.connect(pubkey, f"{listen_addr}")
+
+
+@plugin.method("keysend-mesh")
+def keysend_mesh(
+    dest_pubkey, msatoshi, description=None, plugin=None,
+):
+    """sendpay via the mesh connection using key-send (non-interactive)
+    args: dest_pubkey, msatoshi, [label]
+    """
+    log(f"keysend-mesh to {dest_pubkey} of {msatoshi} msatoshi")
+
+    # create a random label if none given
+    if not description:
+        description = f"{uuid.uuid1().hex} keysend to {dest_pubkey} of {msatoshi}"
+
+    # First we need to generate the secret data == first 64B of dest_pubkey
+    preimage = bytes.fromhex(dest_pubkey[:64])
+    log(f"preimage set as {preimage}")
+
+    # Next we communicate the preimage back to a temp storage location for later
+    config.key_sends[dest_pubkey] = preimage
+    log(f"Stored preimage in config.key_sends[{dest_pubkey}] = {preimage}")
+
+    # Now we generate the payment_hash to be used in the sendpay
+    payment_hash = sha256(preimage).hexdigest()
+    log(f"payment_hash set as {payment_hash}")
+
+    # Get next peer in route
+    # TODO: this should be listfunds in case we are not connected?
+    peer = config.rpc.listpeers()["peers"][0]["id"]
+    log(f"Got next peer {peer}")
+
+    # we add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
+    # we add 60 to cltv (10 hops max, CLTV of 6 each)
+    amt_msat = msatoshi + 10
+    cltv = 9 + 60
+
+    route = config.rpc.getroute(peer, msatoshi=amt_msat, riskfactor=10, cltv=cltv)[
+        "route"
+    ]
+    log(f"Got route to {peer}, executing sendpay command.")
+
+    return config.rpc.sendpay(route, payment_hash, description, amt_msat)
 
 
 @plugin.init()
