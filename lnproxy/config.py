@@ -20,8 +20,8 @@ MSG_MAC: int = 16
 
 # System-agnostic home-path generator
 home = str(Path.home())
-lnproxy_home = f"{home}/.lnproxy"
-Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
+# lnproxy_home = f"{home}/.lnproxy"
+# Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
 # Onion tool path
 ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
@@ -47,6 +47,7 @@ node_info = None
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
+sdk_token = None
 UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute

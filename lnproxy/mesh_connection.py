@@ -6,7 +6,6 @@ import trio
 import trio.testing
 
 import lnproxy.config as config
-import lnproxy.private as priv
 import lnproxy.proxy as proxy
 import lnproxy.util as util
 
@@ -42,7 +41,7 @@ class Connection:
         self._awaiting_disconnect_after_fw_update = [False]
         self.gid = config.nodes[config.node_info["id"]]
         self.geo_region = 2
-        self.sdk_token = priv.sdk_token
+        self.sdk_token = config.sdk_token
         self.debug = debug
         self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
         self.recv_msg_q = queue.Queue()

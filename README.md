@@ -35,10 +35,16 @@ Clone and setup:
     source .venv/bin/activate.fish  # fish shell
     pip install -r requirements.txt
     
+Next we add our goTenna SDK token and ONION_TOOL path to the config file:
+
+    vim lnproxy/config.py
+    # add sdk_token in goTenna section
+    # modify ONION_TOOL path as appropriate
+    
     
 ### (Optional) Fish shell installation
 
-IN my C-Lightning branch I have added to the contrib startup scripts a fish shell derivation which provides a lot of extra helper functions for testing lnproxy. You can, and I recommend, installing fish shell (no need to make it your default shell, yet!) so that you can use them.
+In my C-Lightning branch I have added to the contrib startup scripts a fish shell derivation which provides a lot of extra helper functions for testing lnproxy. You can, and I recommend, installing fish shell (no need to make it your default shell, yet!) so that you can use them.
 
 On macOS, this is as easy as
 
