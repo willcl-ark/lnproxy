@@ -1,31 +1,4 @@
-"""
-byte: an 8-bit byte
-u16: a 2 byte unsigned integer
-u32: a 4 byte unsigned integer
-u64: an 8 byte unsigned integer
-
-tu16: a 0 to 2 byte unsigned integer
-tu32: a 0 to 4 byte unsigned integer
-tu64: a 0 to 8 byte unsigned integer
-
-chain_hash: a 32-byte chain identifier (see BOLT #0)
-channel_id: a 32-byte channel_id (see BOLT #2)
-sha256: a 32-byte SHA2-256 hash
-signature: a 64-byte bitcoin Elliptic Curve signature
-point: a 33-byte Elliptic Curve point (compressed encoding as per SEC 1 standard)
-short_channel_id: an 8 byte value identifying a channel (see BOLT #7)
-
-### BigSize ###
-
-uint8(x)                if x < 0xfd
-0xfd + be16(uint16(x))  if x < 0x10000
-0xfe + be32(uint32(x))  if x < 0x100000000
-0xff + be64(x)          otherwise.
-
-"""
-
 from pathlib import Path
-
 
 # BigSize struct formatting codes
 be_u8: str = ">B"
@@ -45,25 +18,36 @@ MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 
-# System-agnostic home path generator
+# System-agnostic home-path generator
 home = str(Path.home())
 lnproxy_home = f"{home}/.lnproxy"
 Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
-# Onion tool
-ONION_TOOL: str = f"{home}/lnproxy_src/lightning/devtools/onion"
+# Onion tool path
+ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
 
-# Plugin RPC
+# Plugin
+plugin = None
+rpc_s = {1: None, 2: None, 3: None}
 rpc = None
+logger = None
 
-# Trio shared nursery
+# Trio
 nursery = None
+QUEUE = {}
 
-# Sockets opened by the proxy
-sockets = []
+# Lightning node pubkey: GID
+nodes = {
+    "02492bb1fb0eca426af73c189d115fcda79fa9a2f77783e8d9bda4c64e5716af94": 10000001,
+    "03512298acad7fb9b6d2a8096cfe231ead64ae81cc29c78e23329f745d633a5590": 10000002,
+    "026e962239a803c0f005751e60ac1e09772fcce206d0a1b666319423017142d879": 10000003,
+}
+node_info = None
 
-# Node ID
-node_id = ""
+# goTenna Mesh
+mesh_conn = None
+SEND_TIMES = []
+UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees

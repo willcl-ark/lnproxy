@@ -4,22 +4,21 @@ from uuid import uuid4
 from lightning import LightningRpc, RpcError
 
 
-"""
-Challenge:
-rpc3 generates an invoice and returns details to rpc1. rpc1 then does a sendpay only to
-*rpc2*, who, upon not recognising the payment hash will generate an onion which forwards
-the payment to rpc3.
-"""
+# """
+# Challenge:
+# rpc3 generates an invoice and returns details to rpc1. rpc1 then does a sendpay only to
+# *rpc2*, who, upon not recognising the payment hash will generate an onion which forwards
+# to rpc3.
+# """
 
 
 rpc1 = LightningRpc("/tmp/l1-regtest/regtest/lightning-rpc")
 rpc2 = LightningRpc("/tmp/l2-regtest/regtest/lightning-rpc")
-rpc3 = LightningRpc("/tmp/l3-regtest/regtest/lightning-rpc")
 
 
-# rpc3 adds an invoice and returns the decoded invoice
+# rpc2 adds an invoice and returns the decoded invoice
 try:
-    inv = rpc3.decodepay(rpc3.invoice(10000, uuid4().hex, uuid4().hex)["bolt11"])
+    inv = rpc2.decodepay(rpc2.invoice(10000, uuid4().hex, uuid4().hex)["bolt11"])
 except RpcError:
     raise
 
@@ -54,7 +53,7 @@ except RpcError:
 
 # check status with waitsendpay
 try:
-    res = rpc1.waitsendpay(payment_hash=inv["payment_hash"], timeout=120)
+    res = rpc1.waitsendpay(payment_hash=inv["payment_hash"], timeout=400)
 except RpcError:
     raise
 
