@@ -1,16 +1,20 @@
 import contextvars
 import functools
+import logging
 import pathlib
+import re
 import struct
 import time
 import traceback
 
 import trio
+import trio.testing
 
 import lnproxy.config as config
 
 # Context variable for the connection log messages
 pubkey_var = contextvars.ContextVar("pubkey")
+logger = logging.getLogger(__name__)
 
 
 def unlink_socket(address: str):
@@ -22,7 +26,7 @@ def unlink_socket(address: str):
     except OSError:
         # Only log an error if the path exists but we can't unlink it, else ignore
         if socket_path.exists():
-            log(f"Couldn't unlink socket {address}", level="debug")
+            logger.info(f"Couldn't unlink socket {address}")
 
 
 def get_my_payment_hashes() -> list:
@@ -77,9 +81,7 @@ def get_short_chan_id(source: hex, dest: hex) -> bytes:
     block_height = int(block_height)
     tx_index = int(tx_index)
     output_index = int(output_index)
-    log(
-        f"Got short channel ID: {block_height}x{tx_index}x{output_index}", level="debug"
-    )
+    logger.info(f"Got short channel ID: {block_height}x{tx_index}x{output_index}")
 
     _id = bytearray()
     # 3 bytes for block height and tx_index
@@ -93,7 +95,7 @@ def check_onion_tool() -> bool:
     onion = pathlib.Path(config.ONION_TOOL)
     if onion.exists() and onion.is_file():
         return True
-    log(f"Onion tool not found at {config.ONION_TOOL}", level="error")
+    logger.error(f"Onion tool not found at {config.ONION_TOOL}")
     return False
 
 
@@ -109,7 +111,7 @@ def hex_dump(data, length=16):
         printable = "".join(["%s" % ((x <= 127 and _filter[x]) or ".") for x in chars])
         lines.append("%04x  %-*s  %s\n" % (c, length * 3, _hex, printable))
     result = "\n" + "".join(lines)
-    log(result, level="debug")
+    logger.info(result)
 
 
 async def receive_exactly(stream, length: int) -> bytes:
@@ -121,38 +123,48 @@ async def receive_exactly(stream, length: int) -> bytes:
         try:
             res += await stream.receive_some(length - len(res))
         except Exception:
-            log(f"receive_exactly exception: {traceback.format_exc()}")
+            logger.info(f"receive_exactly exception: {traceback.format_exc()}")
     return res
 
 
-async def create_queue(pubkey: str):
+def create_queue(pubkey: str):
     """Creates a config.QUEUE entry for each pubkey.
     Each pubkey has an outbound and inbound queue (stream)
     """
-    assert len(pubkey) == 4
-    config.QUEUE[pubkey] = {
-        # We put whole messages as objects into a memory_channel for mesh sending
-        "outbound": trio.open_memory_channel(50),
-        # We can use a simpler memory_stream for received data as it's often partial
-        "inbound": trio.testing.memory_stream_one_way_pair(),
-    }
+    # If this is commented out, socket not closed
+    # START
+    try:
+        config.QUEUE[pubkey] = {
+            # We put whole messages as objects into a memory_channel for mesh sending
+            "outbound": trio.open_memory_channel(50),
+            # "outbound": "hello",
+            # We can use a simpler memory_stream for received data as it's often partial
+            "inbound": trio.testing.memory_stream_one_way_pair(),
+            # "inbound": "world",
+        }
+    # We skip warning about using "deprecated" (testing) Trio module
+    except:
+        logger.exception("create_queue():")
+    assert pubkey in config.QUEUE
+    # END
+    logger.info(f"Created queues for {pubkey}")
 
 
-def log(msg, level="info"):
-    """Logger which will attempt to log using contextvar and C-Lightning plugin logger.
-    """
-    level = "info"
-    msg = str(msg)
-    if config.logger:
-        try:
-            # Try using C-Lightning plugin logger with contextvar
-            config.logger(f"{pubkey_var.get()} | {msg}", level=level)
-        except (LookupError, NameError):
-            # Contextvar not set yet, try raw plugin logger
-            config.logger(f"{msg}", level=level)
-    else:
-        # Logger not defined yet by plugin
-        print(f"{level.upper()}: {msg}")
+# def log(msg, level="info"):
+#     """Logger which will attempt to log using contextvar and C-Lightning plugin logger.
+#     """
+#     level = "info"
+#     msg = str(msg)
+#     if config.logger:
+#         try:
+#             # Try using C-Lightning plugin logger with contextvar
+#             config.logger(f"{pubkey_var.get()} | {msg}", level=level)
+#         except (LookupError, NameError):
+#             # Contextvar not set yet, try raw plugin logger
+#             config.logger(f"{msg}", level=level)
+#     else:
+#         # Logger not defined yet by plugin
+#         print(f"{level.upper()}: {msg}")
 
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
@@ -169,7 +181,7 @@ def get_gid(pk: bytes) -> int:
     for key in config.nodes.keys():
         if key.startswith(pk.hex()):
             return config.nodes.get(key)
-    log(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}", level="error")
+    logger.error(f"Didnt' locate GID for pk bytes: {pk} hex: {pk.hex()}")
 
 
 def rate_dec():
@@ -204,11 +216,11 @@ def rate_dec():
             # wait the required time
             else:
                 wait = int(60 - (time.time() - config.SEND_TIMES[-(per_min + 1)])) + 1
-                log(f"Waiting {wait}s before send...")
+                logger.info(f"Waiting {wait}s before send...")
                 interval = 1
                 for remaining in range(wait, 0, interval * -1):
                     if remaining % 10 == 0:
-                        log(f"{remaining}s remaining before next mesh send...")
+                        logger.info(f"{remaining}s remaining before next mesh send...")
                     time.sleep(1)
             # execute the send
             return func(*args, **kwargs)
@@ -216,3 +228,39 @@ def rate_dec():
         return limit
 
     return rate_limit
+
+
+def write_pubkey_to_file():
+    """Write lightning node pubkey to file named based on ln_dir
+    """
+    node_info = config.node_info
+    node_id = node_info["id"]
+    node_num = int(re.findall("\d+", node_info["lightning-dir"])[0])
+    p = pathlib.Path(f"/tmp/l{node_num}-pubkey")
+    with open(p, "wt") as s:
+        s.write(node_id)
+        logger.info(f"Written pubkey {node_id} to {p}")
+
+
+def read_pubkeys_from_files():
+    """Hack to exchange node pubkey info automagically.
+    Would usually be done out of band, or could switch to GID-first system.
+    """
+    l1 = pathlib.Path("/tmp/l1-pubkey")
+    l2 = pathlib.Path("/tmp/l2-pubkey")
+    l3 = pathlib.Path("/tmp/l3-pubkey")
+    nodes = [l1, l2, l3]
+    # Wait for all nodes to write to their files
+    while True:
+        if l1.exists() and l2.exists() and l3.exists():
+            break
+        else:
+            time.sleep(0.1)
+    gid = 10000001
+    for node in nodes:
+        with open(node) as n:
+            config.nodes[n.read()] = gid
+        gid += 1
+
+    logger.info(f"Read pubkeys from files and written to config")
+    logger.info(config.nodes)

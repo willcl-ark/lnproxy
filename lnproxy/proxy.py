@@ -1,5 +1,5 @@
 import functools
-import traceback
+import logging
 
 import trio
 
@@ -7,7 +7,8 @@ import lnproxy.config as config
 import lnproxy.ln_msg as ln_msg
 import lnproxy.util as util
 
-log = util.log
+
+logger = logging.getLogger(__name__)
 
 
 async def send_queue_daemon():
@@ -15,7 +16,7 @@ async def send_queue_daemon():
     header and puts messages in general mesh send queue.
     Should be run continuously in it's own thread/task.
     """
-    log("Started mesh_queue_daemon", level="debug")
+    logger.info("Started send_queue_daemon")
     while True:
         if len(config.QUEUE) == 0:
             # No connections yet
@@ -23,13 +24,15 @@ async def send_queue_daemon():
         else:
             # We can't modify a dictionary during iteration so cast to a list each time
             # and iterate over that.
-            pubkeys = list(config.QUEUE.items())
+            queues = list(config.QUEUE.items())
             # We have connections to check
-            for pubkey in pubkeys:
+            for pubkey in queues:
                 try:
                     msg = pubkey[1]["outbound"][1].receive_nowait()
                 except trio.WouldBlock:
                     await trio.sleep(0.1)
+                except:
+                    logger.exception("send_queue_daemon():")
                 else:
                     # Message headers are first 4B of TO and FROM pubkeys
                     header = pubkey[0][0:4] + config.node_info["id"][0:4]
@@ -56,7 +59,7 @@ async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
     """Read from a SocketStream and write to a trio.MemorySendChannel (the mesh "queue")
     or a trio.SocketStream.
     """
-    log(f"Starting proxy(), initiator={initiator}")
+    logger.info(f"Starting proxy(), initiator={initiator}")
     i = 0
     # There are 3 handshake messages in a lightning node opening handshake act:
     # Initiator 50B >> Recipient 50B >> Initiator 66B
@@ -66,15 +69,17 @@ async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
     while True:
         try:
             message = await read_message(read, i, hs_acts, initiator, to_mesh)
-        except Exception:
-            log(f"stream_to_queue:\n{traceback.format_exc()}", level="error")
+        except (trio.BusyResourceError, trio.Cancelled):
+            pass
+        except:
+            logger.exception(f"proxy():")
         else:
             if type(write) == trio.MemorySendChannel:
                 await write.send(message)
             elif type(write) == trio.SocketStream:
                 await write.send_all(message)
             else:
-                log(
+                logger.warning(
                     f"Unexpected write stream type in stream_to_memory_channel()\n"
                     f"{type(write)}"
                 )
@@ -85,7 +90,8 @@ async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
     """Helper that runs each proxy operation (pair) in it's own nursery.
     This means that an error with a single connection won't crash the whole program.
     """
-    log(f"Proxying between local node and {_pubkey}")
+    logger.info(f"Proxying between local node and {_pubkey}")
+
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
             proxy, stream, config.QUEUE[_pubkey]["outbound"][0], stream_init, True
@@ -100,14 +106,14 @@ async def handle_inbound(pubkey: str, task_status=trio.TASK_STATUS_IGNORED):
     Will open a new connection to local C-Lightning node and then proxy the connections.
     """
     util.pubkey_var.set(pubkey)
-    log(f"Handling new incoming connection from pubkey: {pubkey}")
+    logger.info(f"Handling new incoming connection from pubkey: {pubkey}")
     # First connect to our local C-Lightning node.
     try:
         stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
-    except Exception:
-        log(traceback.format_exc())
+    except:
+        logger.exception("handle_inbound():")
     else:
-        log("Connection made to local C-Lightning node")
+        logger.info("Connection made to local C-Lightning node")
         # Report back to Trio that we've made the connection and are ready to receive
         task_status.started()
         # Next proxy between the queue and the socket.
@@ -119,14 +125,20 @@ async def handle_outbound(stream: trio.SocketStream, pubkey: str):
     """Handles an outbound connection, creating the required (mesh) queues if necessary
     and then proxying the connection with the mesh queue.
     """
-    util.pubkey_var.set(pubkey[0:4])
+    # util.pubkey_var.set(pubkey[0:4])
     _pubkey = pubkey[0:4]
-    log(f"Handling new outbound connection to pubkey: {_pubkey}")
-    if pubkey not in config.QUEUE:
-        await util.create_queue(_pubkey)
+    logger.info(f"Handling new outbound connection to pubkey: {_pubkey}")
+    if _pubkey not in config.QUEUE:
+        try:
+            util.create_queue(_pubkey)
+        except:
+            logger.exception("util.create_queue():")
         # Next proxy between the queue and the socket.
         # stream_init is True because we are handshake initiator.
-    await proxy_nursery(stream, _pubkey, stream_init=True, q_init=False)
+    try:
+        await proxy_nursery(stream, _pubkey, stream_init=True, q_init=False)
+    except:
+        logger.exception("handle_outbound():")
 
 
 async def serve_outbound(
@@ -141,11 +153,12 @@ async def serve_outbound(
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
-    log(f"Listening for new outbound connection on {listen_addr}")
+    logger.info(f"Listening for new outbound connection on {listen_addr}")
     # Report back to Trio that we've made the connection and are ready to receive
     task_status.started()
     # Start only a single handle_outbound for this connection.
     async with trio.open_nursery() as nursery:
+        # noinspection PyProtectedMember
         await trio._highlevel_serve_listeners._serve_one_listener(
             trio.SocketListener(sock),
             nursery,

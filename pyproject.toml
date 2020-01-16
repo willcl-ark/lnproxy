@@ -10,6 +10,9 @@ python = "^3.7"
 trio = "^0.13.0"
 pylightning = "^0.0.7"
 gotenna = {url = "https://github.com/gotenna/PublicSDK/raw/master/python-public-sdk/goTenna-0.12.5-py3-none-any.whl"}
+eciespy = "^0.3.3"
+secp256k1 = "^0.13.2"
+hkdf = "^0.0.3"
 
 [tool.poetry.dev-dependencies]
 

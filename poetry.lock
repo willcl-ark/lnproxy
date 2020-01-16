@@ -1,5 +1,13 @@
 [[package]]
 category = "main"
+description = "Fast ASN.1 parser and serializer with definitions for private keys, public keys, certificates, CRL, OCSP, CMS, PKCS#3, PKCS#7, PKCS#8, PKCS#12, PKCS#5, X.509 and TSP"
+name = "asn1crypto"
+optional = false
+python-versions = "*"
+version = "1.3.0"
+
+[[package]]
+category = "main"
 description = "Async generators and context managers for Python 3.5+"
 name = "async-generator"
 optional = false
@@ -33,6 +41,18 @@ pycparser = "*"
 
 [[package]]
 category = "main"
+description = "Cross-platform Python CFFI bindings for libsecp256k1"
+name = "coincurve"
+optional = false
+python-versions = "*"
+version = "13.0.0"
+
+[package.dependencies]
+asn1crypto = "*"
+cffi = ">=1.3.0"
+
+[[package]]
+category = "main"
 description = "cryptography is a package which provides cryptographic recipes and primitives to Python developers."
 name = "cryptography"
 optional = false
@@ -52,6 +72,103 @@ test = ["pytest (>=3.6.0,<3.9.0 || >3.9.0,<3.9.1 || >3.9.1,<3.9.2 || >3.9.2)", "
 
 [[package]]
 category = "main"
+description = "Cython implementation of Toolz: High performance functional utilities"
+marker = "implementation_name == \"cpython\""
+name = "cytoolz"
+optional = false
+python-versions = "*"
+version = "0.10.1"
+
+[package.dependencies]
+toolz = ">=0.8.0"
+
+[package.extras]
+cython = ["cython"]
+
+[[package]]
+category = "main"
+description = "Elliptic Curve Integrated Encryption Scheme for secp256k1 in Python"
+name = "eciespy"
+optional = false
+python-versions = ">=3.5.3"
+version = "0.3.3"
+
+[package.dependencies]
+coincurve = ">=13.0,<14.0"
+eth-keys = ">=0.3.1,<0.4.0"
+pycryptodome = ">=3.9,<4.0"
+
+[[package]]
+category = "main"
+description = "eth-hash: The Ethereum hashing function, keccak256, sometimes (erroneously) called sha3"
+name = "eth-hash"
+optional = false
+python-versions = ">=3.5, <4"
+version = "0.2.0"
+
+[package.extras]
+dev = ["bumpversion (>=0.5.3,<1)", "pytest-xdist", "pytest-watch (>=4.1.0,<5)", "wheel", "ipython", "pytest (3.3.2)", "tox (>=2.9.1,<3)", "flake8 (3.4.1)", "isort (>=4.2.15,<5)", "Sphinx (>=1.6.5,<2)", "sphinx-rtd-theme (>=0.1.9)"]
+doc = ["Sphinx (>=1.6.5,<2)", "sphinx-rtd-theme (>=0.1.9)"]
+lint = ["flake8 (3.4.1)", "isort (>=4.2.15,<5)"]
+pycryptodome = ["pycryptodome (>=3.6.6,<4)"]
+pysha3 = ["pysha3 (>=1.0.0,<2.0.0)"]
+test = ["pytest (3.3.2)", "tox (>=2.9.1,<3)"]
+
+[[package]]
+category = "main"
+description = "Common API for Ethereum key operations."
+name = "eth-keys"
+optional = false
+python-versions = "*"
+version = "0.3.1"
+
+[package.dependencies]
+eth-utils = ">=1.3.0,<2.0.0"
+
+[package.extras]
+coincurve = ["coincurve (>=7.0.0,<13.0.0)"]
+dev = ["tox (2.7.0)", "bumpversion (0.5.3)", "twine", "eth-utils (>=1.3.0,<2.0.0)", "flake8 (3.0.4)", "mypy (0.701)", "asn1tools (>=0.146.2,<0.147)", "pyasn1 (>=0.4.5,<0.5)", "pytest (3.2.2)", "hypothesis (3.30.0)", "eth-hash", "eth-hash"]
+eth-keys = ["eth-utils (>=1.3.0,<2.0.0)"]
+lint = ["flake8 (3.0.4)", "mypy (0.701)"]
+test = ["asn1tools (>=0.146.2,<0.147)", "pyasn1 (>=0.4.5,<0.5)", "pytest (3.2.2)", "hypothesis (3.30.0)", "eth-hash", "eth-hash"]
+
+[[package]]
+category = "main"
+description = "eth-typing: Common type annotations for ethereum python packages"
+name = "eth-typing"
+optional = false
+python-versions = ">=3.5, <4"
+version = "2.2.1"
+
+[package.extras]
+dev = ["bumpversion (>=0.5.3,<1)", "pytest-watch (>=4.1.0,<5)", "wheel", "twine", "ipython", "pytest (>=4.4,<4.5)", "pytest-xdist", "tox (>=2.9.1,<3)", "flake8 (3.4.1)", "isort (>=4.2.15,<5)", "mypy (0.701)", "pydocstyle (>=3.0.0,<4)", "Sphinx (>=1.6.5,<2)", "sphinx-rtd-theme (>=0.1.9)"]
+doc = ["Sphinx (>=1.6.5,<2)", "sphinx-rtd-theme (>=0.1.9)"]
+lint = ["flake8 (3.4.1)", "isort (>=4.2.15,<5)", "mypy (0.701)", "pydocstyle (>=3.0.0,<4)"]
+test = ["pytest (>=4.4,<4.5)", "pytest-xdist", "tox (>=2.9.1,<3)"]
+
+[[package]]
+category = "main"
+description = "Common utility functions for ethereum codebases."
+name = "eth-utils"
+optional = false
+python-versions = ">=3.5,!=3.5.2,<4"
+version = "1.8.4"
+
+[package.dependencies]
+cytoolz = ">=0.10.1,<1.0.0"
+eth-hash = ">=0.1.0,<1.0.0"
+eth-typing = ">=2.2.1,<3.0.0"
+toolz = ">0.8.2,<1"
+
+[package.extras]
+deploy = ["bumpversion (>=0.5.3,<1.0.0)", "tox (>=2.9.1,<3.0.0)", "wheel (>=0.30.0,<1.0.0)"]
+dev = ["twine (>=1.13,<2)", "Sphinx (>=1.5.5,<2)", "sphinx-rtd-theme (>=0.1.9,<2)", "towncrier (>=19.2.0,<20)", "black (>=18.6b4,<19)", "flake8 (>=3.7.0,<4.0.0)", "isort (4.3.18)", "mypy (0.701)", "pytest (>=3.4.1,<4.0.0)", "hypothesis (>=4.43.0,<5.0.0)", "pytest-pythonpath (>=0.3,<1.0)", "bumpversion (>=0.5.3,<1.0.0)", "tox (>=2.9.1,<3.0.0)", "wheel (>=0.30.0,<1.0.0)"]
+doc = ["Sphinx (>=1.5.5,<2)", "sphinx-rtd-theme (>=0.1.9,<2)", "towncrier (>=19.2.0,<20)"]
+lint = ["black (>=18.6b4,<19)", "flake8 (>=3.7.0,<4.0.0)", "isort (4.3.18)", "mypy (0.701)", "pytest (>=3.4.1,<4.0.0)"]
+test = ["hypothesis (>=4.43.0,<5.0.0)", "pytest (>=3.4.1,<4.0.0)", "pytest-pythonpath (>=0.3,<1.0)"]
+
+[[package]]
+category = "main"
 description = "An SDK for talking to goTennas"
 name = "goTenna"
 optional = false
@@ -67,6 +184,15 @@ six = "*"
 reference = ""
 type = "url"
 url = "https://github.com/gotenna/PublicSDK/raw/master/python-public-sdk/goTenna-0.12.5-py3-none-any.whl"
+
+[[package]]
+category = "main"
+description = "HMAC-based Extract-and-Expand Key Derivation Function (HKDF)"
+name = "hkdf"
+optional = false
+python-versions = "*"
+version = "0.0.3"
+
 [[package]]
 category = "main"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -89,11 +215,18 @@ attrs = ">=19.2.0"
 [[package]]
 category = "main"
 description = "C parser in Python"
-marker = "os_name == \"nt\""
 name = "pycparser"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "2.19"
+
+[[package]]
+category = "main"
+description = "Cryptographic library for Python"
+name = "pycryptodome"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+version = "3.9.4"
 
 [[package]]
 category = "main"
@@ -110,6 +243,17 @@ name = "pyserial"
 optional = false
 python-versions = "*"
 version = "3.4"
+
+[[package]]
+category = "main"
+description = "FFI bindings to libsecp256k1"
+name = "secp256k1"
+optional = false
+python-versions = "*"
+version = "0.13.2"
+
+[package.dependencies]
+cffi = ">=1.3.0"
 
 [[package]]
 category = "main"
@@ -137,6 +281,15 @@ version = "2.1.0"
 
 [[package]]
 category = "main"
+description = "List processing tools and functional utilities"
+marker = "implementation_name == \"cpython\" or implementation_name == \"pypy\""
+name = "toolz"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+version = "0.10.0"
+
+[[package]]
+category = "main"
 description = "A friendly Python library for async concurrency and I/O"
 name = "trio"
 optional = false
@@ -153,10 +306,14 @@ sniffio = "*"
 sortedcontainers = "*"
 
 [metadata]
-content-hash = "8f5f7fa4d6b821a990af632eb8c5144c1eec25d2bbb4bed52651c18f9bcfc251"
+content-hash = "eae6fa00fd58c1d0f568f34d647908304460b3de0b41488ac8237550027e5944"
 python-versions = "^3.7"
 
 [metadata.files]
+asn1crypto = [
+    {file = "asn1crypto-1.3.0-py2.py3-none-any.whl", hash = "sha256:831d2710d3274c8a74befdddaf9f17fcbf6e350534565074818722d6d615b315"},
+    {file = "asn1crypto-1.3.0.tar.gz", hash = "sha256:5a215cb8dc12f892244e3a113fe05397ee23c5c4ca7a69cd6e69811755efc42d"},
+]
 async-generator = [
     {file = "async_generator-1.10-py3-none-any.whl", hash = "sha256:01c7bf666359b4967d2cda0000cc2e4af16a0ae098cbffcb8472fb9e8ad6585b"},
     {file = "async_generator-1.10.tar.gz", hash = "sha256:6ebb3d106c12920aaae42ccb6f787ef5eefdcdd166ea3d628fa8476abe712144"},
@@ -200,6 +357,35 @@ cffi = [
     {file = "cffi-1.13.2-cp38-cp38-win_amd64.whl", hash = "sha256:2781e9ad0e9d47173c0093321bb5435a9dfae0ed6a762aabafa13108f5f7b2ba"},
     {file = "cffi-1.13.2.tar.gz", hash = "sha256:599a1e8ff057ac530c9ad1778293c665cb81a791421f46922d80a86473c13346"},
 ]
+coincurve = [
+    {file = "coincurve-13.0.0-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:75a6a7c6116d7f10992e06c0aeeaddcaee55a537ceef17961180ba8dd33e4a03"},
+    {file = "coincurve-13.0.0-cp27-cp27m-manylinux1_i686.whl", hash = "sha256:a01b2769c1045a8ba60bef61ef15c3b6276dcb75b850cfc0bfab92a2856deb3c"},
+    {file = "coincurve-13.0.0-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:0da923e7eba89d65ff37d18be4935d710f21032f645e59f0b0749f40c19807d9"},
+    {file = "coincurve-13.0.0-cp27-cp27m-manylinux2010_x86_64.whl", hash = "sha256:b44eb772f696455ffc60e37c1b7de8ba4db9a388ddadfb960e6caf0f0da6b511"},
+    {file = "coincurve-13.0.0-cp27-cp27mu-manylinux1_i686.whl", hash = "sha256:f0b5cce8e677c493475cbe4356e4500e287d5f484918483f402bbd4305659af2"},
+    {file = "coincurve-13.0.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:e6e35e3cbb6872f51c3b869a4fa27f36dc760db268818084a879c47e5a5b69e4"},
+    {file = "coincurve-13.0.0-cp27-cp27mu-manylinux2010_x86_64.whl", hash = "sha256:800b649bfc8e12a49927c98f02bfcc543af80f06bd25c4e5df41531ed142c681"},
+    {file = "coincurve-13.0.0-cp35-cp35m-macosx_10_13_x86_64.whl", hash = "sha256:6eaf8ef5d91f6ebc2df35b7fce958b33fbee581f0e0becedfcbb8947da1764e8"},
+    {file = "coincurve-13.0.0-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:b7f901083695dee84ab7b1a34c90d00fb18b71db74d25fae5be10455016049a7"},
+    {file = "coincurve-13.0.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:c26546176bdc1a77321d38a0178544f5f12f41c8b47e227581adebd61f30dea5"},
+    {file = "coincurve-13.0.0-cp35-cp35m-manylinux2010_x86_64.whl", hash = "sha256:9af82dd36721245416c32256c0a3504dc13ee07de29b09ebb9724c2684b2cfb6"},
+    {file = "coincurve-13.0.0-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:1f6d74500eb5ba1bf3a8e2ac3c7bcc96d7076082a3b5500fa63f4b8fad170b75"},
+    {file = "coincurve-13.0.0-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:fa4b6e311d45995012d194569a02281448d700681d72857433e05821a75d310d"},
+    {file = "coincurve-13.0.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:96c023d330120a62234638b563f83d3064bfeb2d8a20ccbcf00ab4d851424458"},
+    {file = "coincurve-13.0.0-cp36-cp36m-manylinux2010_x86_64.whl", hash = "sha256:2d540d79adfca1c5be0122362b87ad7308b77a517da9dc51e523b7fbe8ac405a"},
+    {file = "coincurve-13.0.0-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:f136c98b4a2df3829e1f2f2e6a28f7ff9d5676c5c3614c6d3e511f07e024c093"},
+    {file = "coincurve-13.0.0-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:546fc4765e38aa36a723e8ebca03408145c4837d470bd3704e295902ee4e4224"},
+    {file = "coincurve-13.0.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:a769882d0e2bf5f21d54992794d78325021eabcc6bfc3d373aa1ad7760a0f7fe"},
+    {file = "coincurve-13.0.0-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:e3ebedd738135b0661821c9d69369ee009adb87b21a32599fff7f78589d5e58d"},
+    {file = "coincurve-13.0.0-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:9e25ab16935d348be05bdf8fab648475e568a1b5754f518979c8e2cd08c4a71d"},
+    {file = "coincurve-13.0.0-cp38-cp38-manylinux1_i686.whl", hash = "sha256:bec315f32b09bb14b3261a50c0decf4d3f51dcf5de9d6cfeaf463c37656f0087"},
+    {file = "coincurve-13.0.0-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:1be6b876bfbdfdd8c4e94708c9cd024cb06c8461cabbcd9b96659743a23dfbd6"},
+    {file = "coincurve-13.0.0-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:4c1d9241a31c0fe6d50ce561294f63955ec0fb3afbf1579da8b3742612a6e9dc"},
+    {file = "coincurve-13.0.0-pp371-pypy3_71-manylinux2010_x86_64.whl", hash = "sha256:4595c6bfb5be36a7365c638f535b10afffe7bea70eff3b57e8c3cb5e7eaf5325"},
+    {file = "coincurve-13.0.0-py2.py3-none-win32.whl", hash = "sha256:8474d1576d06d9d0c210bd64e3e245e43a8ff6e18c90e343567c5954b088726e"},
+    {file = "coincurve-13.0.0-py2.py3-none-win_amd64.whl", hash = "sha256:1e3b9068df66df8669b4e58e03c5e95f382e582cf31a743c9aae9963272482bc"},
+    {file = "coincurve-13.0.0.tar.gz", hash = "sha256:9985627dc0c81fe98c3d2e97412801e9726d6110249317a2775cf365f0ba0df5"},
+]
 cryptography = [
     {file = "cryptography-2.8-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:fb81c17e0ebe3358486cd8cc3ad78adbae58af12fc2bf2bc0bb84e8090fa5ce8"},
     {file = "cryptography-2.8-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:44ff04138935882fef7c686878e1c8fd80a723161ad6a98da31e14b7553170c2"},
@@ -223,7 +409,33 @@ cryptography = [
     {file = "cryptography-2.8-cp38-cp38-win_amd64.whl", hash = "sha256:971221ed40f058f5662a604bd1ae6e4521d84e6cad0b7b170564cc34169c8f13"},
     {file = "cryptography-2.8.tar.gz", hash = "sha256:3cda1f0ed8747339bbdf71b9f38ca74c7b592f24f65cdb3ab3765e4b02871651"},
 ]
+cytoolz = [
+    {file = "cytoolz-0.10.1.tar.gz", hash = "sha256:82f5bba81d73a5a6b06f2a3553ff9003d865952fcb32e1df192378dd944d8a5c"},
+]
+eciespy = [
+    {file = "eciespy-0.3.3-py3-none-any.whl", hash = "sha256:6a4018339e7cb65c738d2c688df3815e98cf5cefd451b7da64e9d03cb2289e90"},
+    {file = "eciespy-0.3.3.tar.gz", hash = "sha256:221fcc7aca612f664e6fd2eba0a5a051c60a95b7287561b508e64e8032d7d1bb"},
+]
+eth-hash = [
+    {file = "eth-hash-0.2.0.tar.gz", hash = "sha256:499dc02d098f69856d1a6dd005529c16174157d4fb2a9fe20c41f69e39f8f176"},
+    {file = "eth_hash-0.2.0-py3-none-any.whl", hash = "sha256:1b9cb34dd3cd99c85c2bd6a1420ceae39a2eee8bf080efd264bcda8be3edecc8"},
+]
+eth-keys = [
+    {file = "eth-keys-0.3.1.tar.gz", hash = "sha256:7df4a4a57b7c4d09860a459452cab356bb5aa166d379479104a63bec0d35d072"},
+    {file = "eth_keys-0.3.1-py3-none-any.whl", hash = "sha256:6b788eec609982bcfdd0f9e38803627e88592474f592b3817740976e9e9ea15e"},
+]
+eth-typing = [
+    {file = "eth-typing-2.2.1.tar.gz", hash = "sha256:cf9e5e9fb62cfeb1027823328569315166851c65c5774604d801b6b926ff65bc"},
+    {file = "eth_typing-2.2.1-py3-none-any.whl", hash = "sha256:2f3e1f891226148898b219bd94674a9af06c2d75d8cdd8c6722227b472cbd4d4"},
+]
+eth-utils = [
+    {file = "eth-utils-1.8.4.tar.gz", hash = "sha256:f398c649859cda5ef7c4ee2753468038d93be7d864de7631c06c3e73a7060649"},
+    {file = "eth_utils-1.8.4-py3-none-any.whl", hash = "sha256:8358318685e7a7666b148b07df3c4d409435b424dce18501e79920aa52bcaba7"},
+]
 goTenna = []
+hkdf = [
+    {file = "hkdf-0.0.3.tar.gz", hash = "sha256:622a31c634bc185581530a4b44ffb731ed208acf4614f9c795bdd70e77991dca"},
+]
 idna = [
     {file = "idna-2.8-py2.py3-none-any.whl", hash = "sha256:ea8b7f6188e6fa117537c3df7da9fc686d485087abf6ac197f9c46432f7e4a3c"},
     {file = "idna-2.8.tar.gz", hash = "sha256:c357b3f628cf53ae2c4c05627ecc484553142ca23264e593d327bcde5e9c3407"},
@@ -235,6 +447,40 @@ outcome = [
 pycparser = [
     {file = "pycparser-2.19.tar.gz", hash = "sha256:a988718abfad80b6b157acce7bf130a30876d27603738ac39f140993246b25b3"},
 ]
+pycryptodome = [
+    {file = "pycryptodome-3.9.4-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:6c2720696b10ae356040e888bde1239b8957fe18885ccf5e7b4e8dec882f0856"},
+    {file = "pycryptodome-3.9.4-cp27-cp27m-manylinux1_i686.whl", hash = "sha256:5c485ed6e9718ebcaa81138fa70ace9c563d202b56a8cee119b4085b023931f5"},
+    {file = "pycryptodome-3.9.4-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:56fdd0e425f1b8fd3a00b6d96351f86226674974814c50534864d0124d48871f"},
+    {file = "pycryptodome-3.9.4-cp27-cp27m-win32.whl", hash = "sha256:2de33ed0a95855735d5a0fc0c39603314df9e78ee8bbf0baa9692fb46b3b8bbb"},
+    {file = "pycryptodome-3.9.4-cp27-cp27m-win_amd64.whl", hash = "sha256:eec0689509389f19875f66ae8dedd59f982240cdab31b9f78a8dc266011df93a"},
+    {file = "pycryptodome-3.9.4-cp27-cp27mu-manylinux1_i686.whl", hash = "sha256:68fab8455efcbfe87c5d75015476f9b606227ffe244d57bfd66269451706e899"},
+    {file = "pycryptodome-3.9.4-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:4b9533d4166ca07abdd49ce9d516666b1df944997fe135d4b21ac376aa624aff"},
+    {file = "pycryptodome-3.9.4-cp34-cp34m-manylinux1_i686.whl", hash = "sha256:d3fe3f33ad52bf0c19ee6344b695ba44ffbfa16f3c29ca61116b48d97bd970fb"},
+    {file = "pycryptodome-3.9.4-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:319e568baf86620b419d53063b18c216abf924875966efdfe06891b987196a45"},
+    {file = "pycryptodome-3.9.4-cp34-cp34m-win32.whl", hash = "sha256:042ae873baadd0c33b4d699a5c5b976ade3233a979d972f98ca82314632d868c"},
+    {file = "pycryptodome-3.9.4-cp34-cp34m-win_amd64.whl", hash = "sha256:a30f501bbb32e01a49ef9e09ca1260e5ab49bf33a257080ec553e08997acc487"},
+    {file = "pycryptodome-3.9.4-cp35-cp35m-macosx_10_6_intel.whl", hash = "sha256:b55c60c321ac91945c60a40ac9896ac7a3d432bb3e8c14006dfd82ad5871c331"},
+    {file = "pycryptodome-3.9.4-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:9d9945ac8375d5d8e60bd2a2e1df5882eaa315522eedf3ca868b1546dfa34eba"},
+    {file = "pycryptodome-3.9.4-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:4372ec7518727172e1605c0843cdc5375d4771e447b8148c787b860260aae151"},
+    {file = "pycryptodome-3.9.4-cp35-cp35m-win32.whl", hash = "sha256:0502876279772b1384b660ccc91563d04490d562799d8e2e06b411e2d81128a9"},
+    {file = "pycryptodome-3.9.4-cp35-cp35m-win_amd64.whl", hash = "sha256:72166c2ac520a5dbd2d90208b9c279161ec0861662a621892bd52fb6ca13ab91"},
+    {file = "pycryptodome-3.9.4-cp36-cp36m-macosx_10_6_intel.whl", hash = "sha256:b4af098f2a50f8d048ab12cabb59456585c0acf43d90ee79782d2d6d0ed59dba"},
+    {file = "pycryptodome-3.9.4-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:8a799bea3c6617736e914a2e77c409f52893d382f619f088f8a80e2e21f573c1"},
+    {file = "pycryptodome-3.9.4-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:7c52308ac5b834331b2f107a490b2c27de024a229b61df4cdc5c131d563dfe98"},
+    {file = "pycryptodome-3.9.4-cp36-cp36m-win32.whl", hash = "sha256:63c103a22cbe9752f6ea9f1a0de129995bad91c4d03a66c67cffcf6ee0c9f1e1"},
+    {file = "pycryptodome-3.9.4-cp36-cp36m-win_amd64.whl", hash = "sha256:54456cf85130e01674d21fb1ab89ffccacb138a8ade88d72fa2b0ac898d2798b"},
+    {file = "pycryptodome-3.9.4-cp37-cp37m-macosx_10_6_intel.whl", hash = "sha256:aec4d42deb836b8fb3ba32f2ba1ef0d33dd3dc9d430b1479ee7a914490d15b5e"},
+    {file = "pycryptodome-3.9.4-cp37-cp37m-manylinux1_i686.whl", hash = "sha256:896e9b6fd0762aa07b203c993fbbee7a1f1a4674c6886afd7bfa86f3d1be98a8"},
+    {file = "pycryptodome-3.9.4-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:57b1b707363490c495ad0eeb38bd1b0e1697c497af25fad78d3a1ebf0477fd5b"},
+    {file = "pycryptodome-3.9.4-cp37-cp37m-win32.whl", hash = "sha256:87d8d85b4792ca5e730fb7a519fbc3ed976c59dcf79c5204589c59afd56b9926"},
+    {file = "pycryptodome-3.9.4-cp37-cp37m-win_amd64.whl", hash = "sha256:e3a79a30d15d9c7c284a7734036ee8abdb5ca3a6f5774d293cdc9e1358c1dc10"},
+    {file = "pycryptodome-3.9.4-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:48821950ffb9c836858d8fa09d7840b6df52eadd387a3c5acece55cb387743f9"},
+    {file = "pycryptodome-3.9.4-cp38-cp38-manylinux1_i686.whl", hash = "sha256:cbfd97f9e060f0d30245cd29fa267a9a84de9da97559366fca0a3f7655acc63f"},
+    {file = "pycryptodome-3.9.4-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:9ef966c727de942de3e41aa8462c4b7b4bca70f19af5a3f99e31376589c11aac"},
+    {file = "pycryptodome-3.9.4-cp38-cp38-win32.whl", hash = "sha256:a8ca2450394d3699c9f15ef25e8de9a24b401933716a1e39d37fa01f5fe3c58b"},
+    {file = "pycryptodome-3.9.4-cp38-cp38-win_amd64.whl", hash = "sha256:c53348358408d94869059e16fba5ff3bef8c52c25b18421472aba272b9bb450f"},
+    {file = "pycryptodome-3.9.4.tar.gz", hash = "sha256:a168e73879619b467072509a223282a02c8047d932a48b74fbd498f27224aa04"},
+]
 pylightning = [
     {file = "pylightning-0.0.7.3-py3-none-any.whl", hash = "sha256:5b7df2c6f0faf17450ea3024f29f901a114d4c68da116a1b130958df510a0557"},
     {file = "pylightning-0.0.7.3.tar.gz", hash = "sha256:6a07b62b27e01baaf51165e2dfb8b7d1d47f61aef8304a9da3ca5081608a32c0"},
@@ -242,6 +488,17 @@ pylightning = [
 pyserial = [
     {file = "pyserial-3.4-py2.py3-none-any.whl", hash = "sha256:e0770fadba80c31013896c7e6ef703f72e7834965954a78e71a3049488d4d7d8"},
     {file = "pyserial-3.4.tar.gz", hash = "sha256:6e2d401fdee0eab996cf734e67773a0143b932772ca8b42451440cfed942c627"},
+]
+secp256k1 = [
+    {file = "secp256k1-0.13.2-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:a755c85947b70c69cf318412bfd12889863e70ddf76b588701835a4da5322d55"},
+    {file = "secp256k1-0.13.2-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:a598f2223ed3bf55bb7e317c5ebd1a316b3b4d65db26de32554bb84adf026eae"},
+    {file = "secp256k1-0.13.2-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:2ad20bb8553425be795ecaf6641a510470701fa6a7aa9c54395d3989c070ab4c"},
+    {file = "secp256k1-0.13.2-cp33-cp33m-manylinux1_x86_64.whl", hash = "sha256:e9842fdc3b24c3174f49794d93b10b2013aa7b5d7029d12989458482c95ee56a"},
+    {file = "secp256k1-0.13.2-cp34-cp34m-macosx_10_6_intel.whl", hash = "sha256:5cded8e5d241dd92f6e55fd7462ff74e4edcbe97850b7bf4378cc56e48e446d7"},
+    {file = "secp256k1-0.13.2-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:e86eab58d0c2e93c08483c8a8546fe54ade8150ff4a1f320417d647635cb133b"},
+    {file = "secp256k1-0.13.2-cp35-cp35m-macosx_10_6_intel.whl", hash = "sha256:29521dda0f3ad51afc26141d9a564b40bb39e84d27046164c502774b22ea2f9c"},
+    {file = "secp256k1-0.13.2-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:df29091e6ac74bb0683a44d57411bd59c6c99d04d79ef4e396e4a67d91f6bd65"},
+    {file = "secp256k1-0.13.2.tar.gz", hash = "sha256:a3b43e02d321c09eafa769a6fc2c156f555cab3a7db62175ef2fd21e16cdf20c"},
 ]
 six = [
     {file = "six-1.13.0-py2.py3-none-any.whl", hash = "sha256:1f1b7d42e254082a9db6279deae68afb421ceba6158efa6131de7b3003ee93fd"},
@@ -254,6 +511,9 @@ sniffio = [
 sortedcontainers = [
     {file = "sortedcontainers-2.1.0-py2.py3-none-any.whl", hash = "sha256:d9e96492dd51fae31e60837736b38fe42a187b5404c16606ff7ee7cd582d4c60"},
     {file = "sortedcontainers-2.1.0.tar.gz", hash = "sha256:974e9a32f56b17c1bac2aebd9dcf197f3eb9cd30553c5852a3187ad162e1a03a"},
+]
+toolz = [
+    {file = "toolz-0.10.0.tar.gz", hash = "sha256:08fdd5ef7c96480ad11c12d472de21acd32359996f69a5259299b540feba4560"},
 ]
 trio = [
     {file = "trio-0.13.0-py3-none-any.whl", hash = "sha256:a6d83c0cb4a177ec0f5179ce88e27914d5c8e6fd01c4285176b949e6ddc88c6c"},

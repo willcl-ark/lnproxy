@@ -1,9 +1,9 @@
+import logging
 import queue
 import time
 
 import goTenna
 import trio
-import trio.testing
 
 import lnproxy.config as config
 import lnproxy.proxy as proxy
@@ -16,15 +16,35 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-log = util.log
+logger = logging.getLogger(__name__)
+gotenna_logger = logging.getLogger("goTenna")
+gotenna_logger.setLevel(level=logging.WARNING)
+
+
+async def connection_daemon():
+    """Load the goTenna mesh connection object (to persistent config.mesh_conn).
+    Start the send_queue_daemon in the main nursery.
+    """
+    # Wait for node info to populate.
+    while config.node_info is None:
+        logger.info("Can't find node_info")
+        await trio.sleep(0.1)
+    logger.info("Got node info, starting connection")
+    # start the mesh connection
+    config.mesh_conn = Connection()
+    # start the send_queue_daemon:
+    while config.mesh_conn.active is False:
+        await trio.sleep(0.1)
+    config.nursery.start_soon(proxy.send_queue_daemon)
+    logger.info("Connection and send_queue_daemon started successfully")
 
 
 class Connection:
     """goTenna connection class
     """
 
-    def __init__(self, debug=False):
-        log("Initialising goTenna Connection object", level="debug")
+    def __init__(self):
+        logger.info("Initialising goTenna Connection object")
         self.active = False
         self.api_thread = None
         self.status = {}
@@ -39,22 +59,26 @@ class Connection:
         )
         self._do_encryption = True
         self._awaiting_disconnect_after_fw_update = [False]
+        # Wait for node info to populate from main thread
+        while not config.node_info:
+            time.sleep(0.1)
+        while config.node_info["id"] not in config.nodes:
+            time.sleep(0.1)
         self.gid = config.nodes[config.node_info["id"]]
         self.geo_region = 2
         self.sdk_token = config.sdk_token
-        self.debug = debug
         self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
         self.recv_msg_q = queue.Queue()
         self.start_handlers()
         self.configure()
         self.active = True
-        log("goTenna Connection object initialised", level="debug")
+        logger.info("goTenna Connection object initialised")
 
     def start_handlers(self):
         # start the queue handlers in the main nursery
         config.nursery.start_soon(self.send_handler)
         config.nursery.start_soon(self.recv_handler)
-        log("goTenna Connection handlers started", level="debug")
+        logger.info("goTenna Connection handlers started")
 
     @staticmethod
     async def parse_recv_mesh_msg(msg: bytes):
@@ -69,7 +93,7 @@ class Connection:
         _msg = msg[4:]
         # If we don't have a queue, make one and start a daemon to manage connection
         if _from not in config.QUEUE:
-            await util.create_queue(_from)
+            util.create_queue(_from)
             # start a new handle_inbound for this connection
             await config.nursery.start(proxy.handle_inbound, _from)
         await config.QUEUE[_from]["inbound"][0].send_all(_msg)
@@ -88,7 +112,7 @@ class Connection:
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
         """
-        log("Started send_handler", level="debug")
+        logger.info("Started send_handler")
         async for msg in self.send_mesh_recv:
             await self.lookup_and_send(msg)
 
@@ -96,7 +120,7 @@ class Connection:
         """Handles all messages received from the mesh.
         Put them in the right queue (memory_stream).
         """
-        log("Started recv_handler", level="debug")
+        logger.info("Started recv_handler")
         while True:
             if not self.recv_msg_q.empty():
                 await self.parse_recv_mesh_msg(self.recv_msg_q.get())
@@ -119,7 +143,7 @@ class Connection:
         """set sdk_token for the connection
         """
         if self.api_thread:
-            log("To change SDK tokens, restart the app.", level="error")
+            logger.warning("To change SDK tokens, restart the app.")
             return
         try:
             if not SPI_CONNECTION:
@@ -145,11 +169,10 @@ class Connection:
                 trio.to_thread.run_sync, self.api_thread.run,
             )
         except ValueError:
-            log(
+            logger.error(
                 f"SDK token {sdk_token} is not valid. Please enter a valid SDK token.",
-                level="error",
             )
-        log(f"SDK_TOKEN: {self.api_thread.sdk_token.decode('utf-8')}")
+        logger.info(f"SDK_TOKEN: {self.api_thread.sdk_token.decode('utf-8')}")
 
     def event_callback(self, evt):
         """ The event callback that will store even messages from the API.
@@ -159,33 +182,32 @@ class Connection:
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
             self.recv_msg_q.put(evt.message.payload._binary_data)
-            # log(f"Received message: {evt.message}", level="debug")
+            # logger.info(f"Received message: {evt.message}")
 
         elif evt.event_type == goTenna.driver.Event.DEVICE_PRESENT:
             if self._awaiting_disconnect_after_fw_update[0]:
-                log("Device physically connected")
+                logger.info("Device physically connected")
             else:
-                log("Device physically connected, configure to continue")
+                logger.info("Device physically connected, configure to continue")
                 try:
                     self.configure()
                 except Exception as e:
-                    log(
+                    logger.error(
                         f"Incurred exception whilst trying to auto-configure:\n{e}",
-                        level="error",
                     )
         elif evt.event_type == goTenna.driver.Event.CONNECT:
             if self._awaiting_disconnect_after_fw_update[0]:
-                log("Device reconnected! Firmware update complete!")
+                logger.info("Device reconnected! Firmware update complete!")
                 self._awaiting_disconnect_after_fw_update[0] = False
             else:
-                log("Connected to goTenna Mesh device!")
+                logger.info("Connected to goTenna Mesh device!")
         elif evt.event_type == goTenna.driver.Event.DISCONNECT:
             if self._awaiting_disconnect_after_fw_update[0]:
                 # Do not reset configuration so that the device will reconnect on its
                 # own
-                log("Firmware update: Device disconnected, awaiting reconnect")
+                logger.info("Firmware update: Device disconnected, awaiting reconnect")
             else:
-                log("Disconnected! {evt}")
+                logger.info("Disconnected! {evt}")
                 # We reset the configuration here so that if the user plugs in a
                 # different device it is not immediately reconfigured with new and
                 # incorrect data
@@ -202,7 +224,9 @@ class Connection:
                 if member.gid_val == self.api_thread.gid.gid_val:
                     index = idx
                     break
-            log(f"Added to group {evt.group.gid.gid_val}: You are member {index}")
+            logger.info(
+                f"Added to group {evt.group.gid.gid_val}: You are member {index}"
+            )
 
     def build_callback(self, error_handler=None, binary=False):
         """ Build a callback for sending to the API thread. May specify a callable
@@ -219,8 +243,8 @@ class Connection:
                 goTenna.constants.ErrorCodes.OSERROR,
                 goTenna.constants.ErrorCodes.EXCEPTION,
             ]:
-                log("USB connection disrupted")
-            log(f"{details['code']}: {details['msg']}", level="error")
+                logger.info("USB connection disrupted")
+            logger.error(f"{details['code']}: {details['msg']}")
 
         # Define a second function here so it implicitly captures self
         captured_error_handler = [error_handler]
@@ -247,16 +271,16 @@ class Connection:
                             "status": "Success",
                         }
                         # self.events.callback.put(result)
-                        log(result)
+                        logger.info(result)
                     else:
                         result = {"method": method, "status": "success"}
                         # self.events.callback.put(result)
-                        log(result)
+                        logger.info(result)
                 if binary:
                     # TODO: result not being returned for binary payloads
                     pass
                     # if results:
-                    #     log("Sent via mesh:\n")
+                    #     logger.info("Sent via mesh:\n")
                     #     utilities.hexdump(results)
             elif error:
                 if not captured_error_handler[0]:
@@ -267,7 +291,7 @@ class Connection:
                         "status": "failed",
                     }
                     # self.events.callback.put(result)
-                    log(result)
+                    logger.info(result)
 
         return callback
 
@@ -276,27 +300,26 @@ class Connection:
         GID should be a 15-digit numerical GID.
         """
         if self.api_thread.connected:
-            log("Must not already be connected when setting GID")
+            logger.info("Must not already be connected when setting GID")
             return
         (_gid, _) = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not _gid:
             return
         self.api_thread.set_gid(_gid)
         self._settings.gid_settings = gid
-        log(f"GID: {self.api_thread.gid.gid_val}")
+        logger.info(f"GID: {self.api_thread.gid.gid_val}")
 
     def send_broadcast(self, message, binary=False):
         """ Send a broadcast message, if binary=True, message must be bytes
         """
         if not self.api_thread.connected:
-            log(
+            logger.error(
                 {
                     "send_broadcast": {
                         "status": "failed",
                         "reason": "No device connected",
                     }
                 },
-                level="error",
             )
         else:
 
@@ -307,7 +330,7 @@ class Connection:
                     goTenna.constants.ErrorCodes.TIMEOUT,
                     goTenna.constants.ErrorCodes.OSERROR,
                 ]:
-                    log(
+                    logger.error(
                         {
                             "send_broadcast": {
                                 "status": "failed",
@@ -315,16 +338,14 @@ class Connection:
                                 "connection disrupted",
                             }
                         },
-                        level="error",
                     )
-                log(
+                logger.error(
                     {
                         "send_broadcast": {
                             "status": "failed",
                             "reason": f"error sending message: {details}",
                         }
                     },
-                    level="error",
                 )
 
             try:
@@ -349,17 +370,16 @@ class Connection:
                     # utilities.hexdump(message, send=True)
                     ...
             except ValueError:
-                log(
+                logger.error(
                     {
                         "send_broadcast": {
                             "status": "failed",
                             "reason": "message too long!",
                         }
                     },
-                    level="error",
                 )
             if not binary:
-                log(
+                logger.error(
                     {
                         "send_broadcast": {
                             "status": "complete",
@@ -367,23 +387,21 @@ class Connection:
                             "size(B)": len(message),
                         }
                     },
-                    level="error",
                 )
 
     def _parse_gid(self, __gid, gid_type, print_message=True):
         try:
             if __gid > goTenna.constants.GID_MAX:
-                log(
+                logger.error(
                     f"{str(__gid)} is not a valid GID. The maximum GID is "
                     f"{str(goTenna.constants.GID_MAX)}",
-                    level="error",
                 )
                 return None, __gid
             gidobj = goTenna.settings.GID(__gid, gid_type)
             return gidobj, None
         except ValueError:
             if print_message:
-                log(f"{__gid} is not a valid GID.", level="error")
+                logger.error(f"{__gid} is not a valid GID.")
             return None, None
 
     def send_private(self, gid: int, message, binary=False):
@@ -392,7 +410,7 @@ class Connection:
         """
         _gid, rest = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not self.api_thread.connected:
-            log("Must connect first", level="error")
+            logger.error("Must connect first")
             return
         if not _gid:
             return
@@ -412,10 +430,9 @@ class Connection:
 
             def ack_callback(correlation_id, success):
                 if not success:
-                    log(
+                    logger.error(
                         f"Private message to {_gid.gid_val}: delivery not confirmed,"
                         f"recipient may be offline or out of range",
-                        level="error",
                     )
 
             corr_id = self.api_thread.send_private(
@@ -427,7 +444,7 @@ class Connection:
                 encrypt=False,
             )
         except ValueError:
-            log("Message too long!", level="error")
+            logger.error("Message too long!")
             return
         self.in_flight_events[
             corr_id.bytes
@@ -436,7 +453,7 @@ class Connection:
     def get_device_type(self):
         device = self.api_thread.device_type
         if device is not None:
-            log(device)
+            logger.info(device)
         return device
 
     @staticmethod
@@ -450,15 +467,15 @@ class Connection:
         Allowed region displayed with list_geo_region.
         """
         if self.get_device_type() == "pro":
-            log("This configuration cannot be done for Pro devices.", level="error")
+            logger.error("This configuration cannot be done for Pro devices.")
             return
         if not goTenna.constants.GEO_REGION.valid(region):
-            log("Invalid region setting {}".format(region), level="error")
+            logger.error("Invalid region setting {}".format(region))
             return
         self._set_geo_region = True
         self._settings.geo_settings.region = region
         self.api_thread.set_geo_settings(self._settings.geo_settings)
-        log(f"GEO_REGION: {self.api_thread.geo_settings.region}")
+        logger.info(f"GEO_REGION: {self.api_thread.geo_settings.region}")
 
     def can_connect(self):
         """ Return whether a goTenna can connect.
@@ -485,15 +502,15 @@ class Connection:
             result["MESH - Geo region"] = "OK"
         else:
             result["MESH - Geo region"] = "Not Set"
-        log(result)
+        logger.info(result)
         return result
 
     def get_system_info(self):
         """ Get system information.
         """
         if not self.api_thread.connected:
-            log("Device must be connected", level="warn")
+            logger.warning("Device must be connected")
             return
         info = {"SYSTEM_INFO": self.api_thread.system_info}
-        log(info)
+        logger.info(info)
         return info

@@ -1,4 +1,5 @@
-from pathlib import Path
+import pathlib
+import lnproxy.private as priv
 
 # BigSize struct formatting codes
 be_u8: str = ">B"
@@ -19,7 +20,7 @@ ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 
 # System-agnostic home-path generator
-home = str(Path.home())
+home = str(pathlib.Path.home())
 # lnproxy_home = f"{home}/.lnproxy"
 # Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
@@ -30,26 +31,21 @@ ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
 plugin = None
 rpc_s = {1: None, 2: None, 3: None}
 rpc = None
-logger = None
 
 # Trio
 nursery = None
 QUEUE = {}
 
 # Lightning node
-# pubkey: GID
-nodes = {
-    "02492bb1fb0eca426af73c189d115fcda79fa9a2f77783e8d9bda4c64e5716af94": 10000001,
-    "03512298acad7fb9b6d2a8096cfe231ead64ae81cc29c78e23329f745d633a5590": 10000002,
-    "026e962239a803c0f005751e60ac1e09772fcce206d0a1b666319423017142d879": 10000003,
-}
+nodes = {}
 node_info = None
+node_secret_key = None
 key_sends = {}
 
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
-sdk_token = "HlkVBxcBHUUQREBCUQoCQwEXCkFDDlgOBBcMURoMAxMMDApeXEcJUVwdQhEeAxwI"
+sdk_token = priv.sdk_token
 UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute
