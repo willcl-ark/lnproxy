@@ -5,7 +5,6 @@ import pathlib
 import re
 import struct
 import time
-import traceback
 
 import trio
 import trio.testing
@@ -14,7 +13,22 @@ import lnproxy.config as config
 
 # Context variable for the connection log messages
 pubkey_var = contextvars.ContextVar("pubkey")
-logger = logging.getLogger(__name__)
+
+
+class CustomAdapter(logging.LoggerAdapter):
+    """
+    Prepends contextvar to the log if one exists.
+    """
+
+    def process(self, msg, kwargs):
+        try:
+            return f"{pubkey_var.get()} | {msg}", kwargs
+        # contextvar doesn't exist
+        except (LookupError, NameError):
+            return f"{msg}", kwargs
+
+
+logger = CustomAdapter(logging.getLogger(__name__), None)
 
 
 def unlink_socket(address: str):
@@ -118,12 +132,17 @@ async def receive_exactly(stream, length: int) -> bytes:
     """Receive an exact number of bytes from a trio.SocketStream or a
     trio.testing.MemoryReceiveStream.
     """
+    if length > 65535:
+        logger.warning(
+            f"Got message larger than allowed max size. Likely "
+            f"deserialisation or transmission error: {length}B"
+        )
     res = bytearray()
     while len(res) < length:
         try:
             res += await stream.receive_some(length - len(res))
-        except Exception:
-            logger.info(f"receive_exactly exception: {traceback.format_exc()}")
+        except:
+            logger.exception(f"receive_exactly():")
     return res
 
 
@@ -131,8 +150,6 @@ def create_queue(pubkey: str):
     """Creates a config.QUEUE entry for each pubkey.
     Each pubkey has an outbound and inbound queue (stream)
     """
-    # If this is commented out, socket not closed
-    # START
     try:
         config.QUEUE[pubkey] = {
             # We put whole messages as objects into a memory_channel for mesh sending
@@ -146,25 +163,7 @@ def create_queue(pubkey: str):
     except:
         logger.exception("create_queue():")
     assert pubkey in config.QUEUE
-    # END
     logger.info(f"Created queues for {pubkey}")
-
-
-# def log(msg, level="info"):
-#     """Logger which will attempt to log using contextvar and C-Lightning plugin logger.
-#     """
-#     level = "info"
-#     msg = str(msg)
-#     if config.logger:
-#         try:
-#             # Try using C-Lightning plugin logger with contextvar
-#             config.logger(f"{pubkey_var.get()} | {msg}", level=level)
-#         except (LookupError, NameError):
-#             # Contextvar not set yet, try raw plugin logger
-#             config.logger(f"{msg}", level=level)
-#     else:
-#         # Logger not defined yet by plugin
-#         print(f"{level.upper()}: {msg}")
 
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
@@ -198,12 +197,13 @@ def rate_dec():
         def limit(*args, **kwargs):
             # how many can we send per minute
             if config.UBER:
-                per_min = 12
+                per_min = 15
             else:
-                per_min = 5  # if not private else 8
+                per_min = 5
             min_interval = 1
+            now = time.time()
             # add this send time to the list
-            config.SEND_TIMES.append(time.time())
+            config.SEND_TIMES.append(now)
             # if we've not sent before, send!
             if len(config.SEND_TIMES) <= 1:
                 ...
@@ -215,7 +215,7 @@ def rate_dec():
                 time.sleep(min_interval)
             # wait the required time
             else:
-                wait = int(60 - (time.time() - config.SEND_TIMES[-(per_min + 1)])) + 1
+                wait = int(60 - (now - config.SEND_TIMES[-(per_min + 1)])) + 1
                 logger.info(f"Waiting {wait}s before send...")
                 interval = 1
                 for remaining in range(wait, 0, interval * -1):
@@ -239,18 +239,18 @@ def write_pubkey_to_file():
     p = pathlib.Path(f"/tmp/l{node_num}-pubkey")
     with open(p, "wt") as s:
         s.write(node_id)
-        logger.info(f"Written pubkey {node_id} to {p}")
+    logger.info(f"Written pubkey {node_id} to {p}")
 
 
 def read_pubkeys_from_files():
-    """Hack to exchange node pubkey info automagically.
+    """Hack to exchange node pubkey info automagically as they rotate while testing.
     Would usually be done out of band, or could switch to GID-first system.
     """
     l1 = pathlib.Path("/tmp/l1-pubkey")
     l2 = pathlib.Path("/tmp/l2-pubkey")
     l3 = pathlib.Path("/tmp/l3-pubkey")
     nodes = [l1, l2, l3]
-    # Wait for all nodes to write to their files
+
     while True:
         if l1.exists() and l2.exists() and l3.exists():
             break
@@ -261,6 +261,4 @@ def read_pubkeys_from_files():
         with open(node) as n:
             config.nodes[n.read()] = gid
         gid += 1
-
-    logger.info(f"Read pubkeys from files and written to config")
-    logger.info(config.nodes)
+    logger.info(f"Read pubkeys from files and written to config\n{config.nodes}")

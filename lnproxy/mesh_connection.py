@@ -16,7 +16,7 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-logger = logging.getLogger(__name__)
+logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
 gotenna_logger.setLevel(level=logging.WARNING)
 
@@ -86,7 +86,7 @@ class Connection:
         If a queue does not exist for this pubkey, then it creates the required queues
         and will start a new `handle_inbound` (in the main nursery) which will monitor
         this queue.
-        Puts the received message in the correct queue with header stripped.
+        Puts the received message in the correct queue (stream) with header stripped.
         """
         _to = msg[0:2].hex()
         _from = msg[2:4].hex()

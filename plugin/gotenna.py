@@ -82,7 +82,7 @@ def message(
 
     # Get next peer in route
     # TODO: this should be listfunds in case we are not connected?
-    peer = config.rpc.listpeers()["peers"][0]["id"]
+    peer = config.rpc.listfunds()["channels"][0]["peer_id"]
     logger.info(f"Got next peer {peer}")
 
     # we add 10 satoshis to amount (10 hops max x 1 satoshi fee each)

@@ -12,8 +12,10 @@ import secp256k1
 import hkdf
 import lightning
 
+from lnproxy.util import CustomAdapter
 
-logger = logging.getLogger(__name__)
+
+logger = CustomAdapter(logging.getLogger(__name__), None)
 nodes = [0, 1, 2]
 
 

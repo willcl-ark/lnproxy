@@ -10,7 +10,9 @@ import lnproxy.config as config
 import lnproxy.onion as onion
 import lnproxy.util as util
 
-logger = logging.getLogger(__name__)
+
+logger = util.CustomAdapter(logging.getLogger(__name__), None)
+
 
 codes = {
     16: "init",
@@ -298,7 +300,6 @@ async def read_lightning_msg(stream, to_mesh: bool) -> bytes:
 
     # Bolt #8: 16-byte MAC of the message length
     # body_len_mac = struct.unpack("16s", header[-16:])[0]
-    # TODO: we can add a fake MAC on here during full mesh operation
     # body_len_mac = 16 * (bytes.fromhex("00"))
 
     # Bolt #8: Lightning message

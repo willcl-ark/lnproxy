@@ -8,7 +8,7 @@ import lnproxy.ln_msg as ln_msg
 import lnproxy.util as util
 
 
-logger = logging.getLogger(__name__)
+logger = util.CustomAdapter(logging.getLogger(__name__), None)
 
 
 async def send_queue_daemon():
@@ -105,8 +105,8 @@ async def handle_inbound(pubkey: str, task_status=trio.TASK_STATUS_IGNORED):
     """Handle a new inbound connection from the mesh.
     Will open a new connection to local C-Lightning node and then proxy the connections.
     """
-    util.pubkey_var.set(pubkey)
     logger.info(f"Handling new incoming connection from pubkey: {pubkey}")
+    util.pubkey_var.set(pubkey)
     # First connect to our local C-Lightning node.
     try:
         stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
@@ -125,7 +125,7 @@ async def handle_outbound(stream: trio.SocketStream, pubkey: str):
     """Handles an outbound connection, creating the required (mesh) queues if necessary
     and then proxying the connection with the mesh queue.
     """
-    # util.pubkey_var.set(pubkey[0:4])
+    util.pubkey_var.set(pubkey[0:4])
     _pubkey = pubkey[0:4]
     logger.info(f"Handling new outbound connection to pubkey: {_pubkey}")
     if _pubkey not in config.QUEUE:

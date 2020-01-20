@@ -6,7 +6,7 @@ import lnproxy.config as config
 import lnproxy.util as util
 
 
-logger = logging.getLogger(__name__)
+logger = util.CustomAdapter(logging.getLogger(__name__), None)
 
 
 def decode_hop_data(hop_data: bytes, layer=0):
