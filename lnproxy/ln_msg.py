@@ -4,7 +4,7 @@ import uuid
 import hashlib
 import typing
 
-import ecies
+import lnproxy.crypto as crypto
 
 import lnproxy.config as config
 import lnproxy.onion as onion
@@ -124,7 +124,7 @@ def ret_encrypted_msg_and_header(payment_hash: bytes):
 
 def decrypt_message(message: bytes) -> [bytes, bytes]:
     try:
-        decrypted_msg = ecies.decrypt(config.node_secret_key, message)
+        decrypted_msg = crypto.decrypt(config.node_secret_key, message)
     except:
         logger.exception(f"decrypt_message()")
         return None, None, None

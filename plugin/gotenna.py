@@ -5,7 +5,7 @@ import uuid
 import hashlib
 import pathlib
 
-import ecies
+import lnproxy.crypto as crypto
 import trio
 import lightning
 
@@ -16,12 +16,12 @@ import lnproxy.proxy as proxy
 import lnproxy.util as util
 
 
-plugin = lightning.Plugin()
+ln_plugin = lightning.Plugin()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("plugin")
 
 
-@plugin.method("proxy-connect")
+@ln_plugin.method("proxy-connect")
 def proxy_connect(pubkey, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
@@ -41,7 +41,7 @@ def proxy_connect(pubkey, plugin=None):
     return plugin.rpc.connect(pubkey, f"{listen_addr}")
 
 
-@plugin.method("message")
+@ln_plugin.method("message")
 def message(
     dest_pubkey, message_string, plugin=None,
 ):
@@ -66,7 +66,7 @@ def message(
     logger.info(f"payment_hash set as {payment_hash.hexdigest()}")
 
     # Encrypt the message using recipient lightning node_id (pubkey)
-    encrypted_msg = ecies.encrypt(dest_pubkey, message_string.encode())
+    encrypted_msg = crypto.encrypt(dest_pubkey, message_string.encode())
     logger.info(f"Encrypted message:\n{encrypted_msg.hex()}")
 
     # Store preimage and encrypted message for later (as bytes).
@@ -81,7 +81,6 @@ def message(
     )
 
     # Get next peer in route
-    # TODO: this should be listfunds in case we are not connected?
     peer = config.rpc.listfunds()["channels"][0]["peer_id"]
     logger.info(f"Got next peer {peer}")
 
@@ -98,7 +97,7 @@ def message(
     return config.rpc.sendpay(route, payment_hash.hexdigest(), description, amt_msat)
 
 
-@plugin.init()
+@ln_plugin.init()
 # Unused parameters used by lightning.plugin() internally
 def init(options, configuration, plugin):
     logger.info("Starting plugin")
@@ -122,17 +121,6 @@ def init(options, configuration, plugin):
     logger.info("goTenna plugin initialized")
 
 
-async def error_test():
-
-    await trio.sleep(1)
-
-    try:
-        raise trio.MultiError([ValueError("foo"), KeyError("bar")])
-    except:
-        logger.exception("Exception in error_test()")
-        raise
-
-
 async def main():
     """Main function that is run when the plugin is loaded (and run) by C-Lightning.
     Function decorated with @plugin.init() will be run when `plugin.run()` is called
@@ -144,8 +132,7 @@ async def main():
         async with trio.open_nursery() as config.nursery:
             # We run the plugin itself in a synchronous thread so trio.run() maintains
             # overall control of the app.
-            config.nursery.start_soon(trio.to_thread.run_sync, plugin.run)
-            # config.nursery.start_soon(error_test)
+            config.nursery.start_soon(trio.to_thread.run_sync, ln_plugin.run)
             # # Start the goTenna connection daemon.
             config.nursery.start_soon(mesh.connection_daemon)
     except:
