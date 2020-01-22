@@ -91,7 +91,8 @@ async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
     This means that an error with a single connection won't crash the whole program.
     """
     logger.info(f"Proxying between local node and {_pubkey}")
-
+    # # Set a session key as a contextvar for this proxy session
+    # util.session_key.set()
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
             proxy, stream, config.QUEUE[_pubkey]["outbound"][0], stream_init, True

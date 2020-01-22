@@ -16,12 +16,12 @@ import lnproxy.proxy as proxy
 import lnproxy.util as util
 
 
-ln_plugin = lightning.Plugin()
+gotenna_plugin = lightning.Plugin()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("plugin")
 
 
-@ln_plugin.method("proxy-connect")
+@gotenna_plugin.method("proxy-connect")
 def proxy_connect(pubkey, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
@@ -41,13 +41,16 @@ def proxy_connect(pubkey, plugin=None):
     return plugin.rpc.connect(pubkey, f"{listen_addr}")
 
 
-@ln_plugin.method("message")
+@gotenna_plugin.method("message")
 def message(
-    dest_pubkey, message_string, plugin=None,
+    gid, message_string, plugin=None,
 ):
     """sendpay via the mesh connection using key-send (non-interactive)
-    args: dest_pubkey, msatoshi, [label]
+    args: (goTenna) gid, msatoshi, [label]
     """
+    # Lookup the dest_pubkey from our routing table
+    dest_pubkey = util.get_pubkey_from_routing_table(gid)
+
     # We will use 100 satoshis as base payment amount
     msatoshi = 100_000
 
@@ -97,7 +100,7 @@ def message(
     return config.rpc.sendpay(route, payment_hash.hexdigest(), description, amt_msat)
 
 
-@ln_plugin.init()
+@gotenna_plugin.init()
 # Unused parameters used by lightning.plugin() internally
 def init(options, configuration, plugin):
     logger.info("Starting plugin")
@@ -132,7 +135,7 @@ async def main():
         async with trio.open_nursery() as config.nursery:
             # We run the plugin itself in a synchronous thread so trio.run() maintains
             # overall control of the app.
-            config.nursery.start_soon(trio.to_thread.run_sync, ln_plugin.run)
+            config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
             # # Start the goTenna connection daemon.
             config.nursery.start_soon(mesh.connection_daemon)
     except:

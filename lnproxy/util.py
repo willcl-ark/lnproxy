@@ -13,6 +13,8 @@ import lnproxy.config as config
 
 # Context variable for the connection log messages
 pubkey_var = contextvars.ContextVar("pubkey")
+# Context variable for the connection log messages
+session_key = contextvars.ContextVar("session_key")
 
 
 class CustomAdapter(logging.LoggerAdapter):
@@ -262,3 +264,12 @@ def read_pubkeys_from_files():
             config.nodes[n.read()] = gid
         gid += 1
     logger.info(f"Read pubkeys from files and written to config\n{config.nodes}")
+
+
+def get_pubkey_from_routing_table(gid):
+    dest_pubkey = None
+    for key, value in config.nodes.items():
+        if value == gid:
+            dest_pubkey = key
+    assert dest_pubkey is not None
+    return dest_pubkey
