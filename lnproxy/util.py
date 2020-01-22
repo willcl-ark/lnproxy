@@ -1,5 +1,6 @@
 import contextvars
 import functools
+import itertools
 import logging
 import pathlib
 import re
@@ -156,10 +157,11 @@ def create_queue(pubkey: str):
         config.QUEUE[pubkey] = {
             # We put whole messages as objects into a memory_channel for mesh sending
             "outbound": trio.open_memory_channel(50),
-            # "outbound": "hello",
             # We can use a simpler memory_stream for received data as it's often partial
             "inbound": trio.testing.memory_stream_one_way_pair(),
-            # "inbound": "world",
+            # The nonce field stores which nonce we use to encrypt adn decrypt messages
+            # it is incremented once upon each encrypt or decrypt operation.
+            "nonce": itertools.count(0),
         }
     # We skip warning about using "deprecated" (testing) Trio module
     except:
@@ -266,7 +268,7 @@ def read_pubkeys_from_files():
     logger.info(f"Read pubkeys from files and written to config\n{config.nodes}")
 
 
-def get_pubkey_from_routing_table(gid):
+def get_pubkey_from_routing_table(gid: int) -> str:
     dest_pubkey = None
     for key, value in config.nodes.items():
         if value == gid:

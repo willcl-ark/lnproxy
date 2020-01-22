@@ -114,17 +114,31 @@ def deserialize_htlc_payload(
 
 
 def ret_encrypted_msg_and_header(payment_hash: bytes):
-    msg = config.key_sends[payment_hash]["encrypted_msg"]
+    """Looks up and returns an encrypted message with our (sender) GID attached so
+    that recipient can use correct nonce
+    """
+    # We will send our GID as a u32
+    my_gid = struct.pack(config.be_u32, config.nodes[config.node_info["id"]])
+    msg = bytearray()
+    msg += my_gid
+    msg += config.key_sends[payment_hash]["encrypted_msg"]
     header = struct.pack(config.be_u16, len(msg))
     logger.info(
         f"Generated header for encrypted message\nheader: {header.hex()}\nmsg {msg.hex()}"
     )
-    return header + msg
+    return header + bytes(msg)
 
 
 def decrypt_message(message: bytes) -> [bytes, bytes]:
+    # The first 4 bytes can be unpacked to reveal the sender GID
+    sender_gid = struct.unpack(config.be_u32, message[0:4])[0]
+    # Next lookup the sender pubkey and nonce to use:
+    sender_pubkey = util.get_pubkey_from_routing_table(int(sender_gid))
+    # Retrieve the current nonce for this sender
+    nonce = config.QUEUE[sender_pubkey[0:4]]["nonce"].__next__().to_bytes(16, "big")
+    logger.info(f"NONCE used for decryption: {nonce}")
     try:
-        decrypted_msg = crypto.decrypt(config.node_secret_key, message)
+        decrypted_msg = crypto.decrypt(config.node_secret_key, message[4:], nonce)
     except:
         logger.exception(f"decrypt_message()")
         return None, None, None

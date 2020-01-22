@@ -48,11 +48,11 @@ def message(
     """sendpay via the mesh connection using key-send (non-interactive)
     args: (goTenna) gid, msatoshi, [label]
     """
-    # Lookup the dest_pubkey from our routing table
-    dest_pubkey = util.get_pubkey_from_routing_table(gid)
-
     # We will use 100 satoshis as base payment amount
     msatoshi = 100_000
+
+    # Lookup the dest_pubkey from our routing table
+    dest_pubkey = util.get_pubkey_from_routing_table(gid)
 
     logger.info(f"Message to {dest_pubkey}. Body: {message_string}")
 
@@ -68,8 +68,11 @@ def message(
     payment_hash = hashlib.sha256(preimage.digest())
     logger.info(f"payment_hash set as {payment_hash.hexdigest()}")
 
+    # Next retrieve the next nonce to use for encryption
+    nonce = config.QUEUE[dest_pubkey[0:4]]["nonce"].__next__().to_bytes(16, "big")
+
     # Encrypt the message using recipient lightning node_id (pubkey)
-    encrypted_msg = crypto.encrypt(dest_pubkey, message_string.encode())
+    encrypted_msg = crypto.encrypt(dest_pubkey, message_string.encode(), nonce)
     logger.info(f"Encrypted message:\n{encrypted_msg.hex()}")
 
     # Store preimage and encrypted message for later (as bytes).
