@@ -31,7 +31,7 @@ async def connection_daemon():
         await trio.sleep(0.1)
     logger.info("Got node info, starting connection")
     # start the mesh connection
-    config.mesh_conn = Connection()
+    config.mesh_conn = Connection(plugin=True)
     # start the send_queue_daemon:
     while config.mesh_conn.active is False:
         await trio.sleep(0.1)
@@ -43,8 +43,9 @@ class Connection:
     """goTenna connection class
     """
 
-    def __init__(self):
+    def __init__(self, plugin=False):
         logger.info("Initialising goTenna Connection object")
+        self.plugin = plugin
         self.active = False
         self.api_thread = None
         self.status = {}
@@ -67,12 +68,13 @@ class Connection:
         self.gid = config.nodes[config.node_info["id"]]
         self.geo_region = 2
         self.sdk_token = config.sdk_token
-        self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
-        self.recv_msg_q = queue.Queue()
-        self.start_handlers()
-        self.configure()
-        self.active = True
-        logger.info("goTenna Connection object initialised")
+        if plugin:
+            self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
+            self.recv_msg_q = queue.Queue()
+            self.start_handlers()
+            self.configure()
+            self.active = True
+            logger.info("goTenna Connection object initialised")
 
     def start_handlers(self):
         # start the queue handlers in the main nursery
@@ -165,9 +167,12 @@ class Connection:
                     self.event_callback,
                 )
             # Manage the API thread with Trio so we can communicate back to it if needed
-            config.nursery.start_soon(
-                trio.to_thread.run_sync, self.api_thread.run,
-            )
+            if self.plugin:
+                config.nursery.start_soon(
+                    trio.to_thread.run_sync, self.api_thread.run,
+                )
+            else:
+                self.api_thread.start()
         except ValueError:
             logger.error(
                 f"SDK token {sdk_token} is not valid. Please enter a valid SDK token.",
@@ -181,8 +186,10 @@ class Connection:
         """
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
-            self.recv_msg_q.put(evt.message.payload._binary_data)
-            # logger.info(f"Received message: {evt.message}")
+            if self.plugin:
+                self.recv_msg_q.put(evt.message.payload._binary_data)
+            else:
+                logger.info(f"Received message: {evt.message}")
 
         elif evt.event_type == goTenna.driver.Event.DEVICE_PRESENT:
             if self._awaiting_disconnect_after_fw_update[0]:
@@ -424,9 +431,11 @@ class Connection:
             if binary:
                 method_callback = self.build_callback(error_handler, binary=True)
                 payload = goTenna.payload.BinaryPayload(message)
+                encrypt = False
             else:
                 method_callback = self.build_callback(error_handler)
                 payload = goTenna.payload.TextPayload(message)
+                encrypt = True
 
             def ack_callback(correlation_id, success):
                 if not success:
@@ -441,7 +450,7 @@ class Connection:
                 method_callback,
                 ack_callback=ack_callback,
                 # encrypt=self._do_encryption,
-                encrypt=False,
+                encrypt=encrypt,
             )
         except ValueError:
             logger.error("Message too long!")
