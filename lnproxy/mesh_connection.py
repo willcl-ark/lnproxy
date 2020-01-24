@@ -102,7 +102,7 @@ class Connection:
         monitor this node.
         Puts the received message in the correct queue (stream) with header stripped.
         """
-        logger.debug(f"Received message {msg.payload._binary_data.hex()}")
+        # logger.debug(f"Received message {msg.payload._binary_data.hex()}")
         _to = msg.destination.gid_val
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
@@ -126,7 +126,6 @@ class Connection:
         # lookup the recipient GID
         # TODO: we should send the messages as a tuple with GID here to avoid lookups
         to_gid = int.from_bytes(msg[:8], "big")
-        # logger.debug(f"Got GID {to_gid} from message header")
         # send to GID using private message in binary mode
         self.send_private(to_gid, msg[8:], binary=True)
 
@@ -438,7 +437,7 @@ class Connection:
         """ Send a private message to a contact
         GID is the GID to send the private message to.
         """
-        logger.debug(f"Sending message {message.hex()} to gid {gid}. Binary={binary}")
+        # logger.debug(f"Sending message {message.hex()} to gid {gid}. Binary={binary}")
         _gid, rest = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not self.api_thread.connected:
             logger.error("Must connect first")

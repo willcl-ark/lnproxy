@@ -56,35 +56,35 @@ class EncryptedMessage:
         gid: int,
         plain_text: str = None,
         encrypted_msg: bytes = None,
-        dest_pubkey=None,
-        nonce=None,
+        dest_pubkey: str = None,
+        nonce: bytes = None,
         router=None,
     ):
         self.gid = gid
         self.plain_text = plain_text
         self.encrypted_msg = encrypted_msg
         self.router = router
-        self.msatoshi = None
+        self.msatoshi: int = int()
         self.dest_pubkey = dest_pubkey
-        self.nonce = nonce
+        self.nonce: bytes = nonce
         self.preimage = None
         self.payment_hash = None
-        self.sender_pubkey = None
-        self.decrypted_msg = None
+        self.sender_pubkey: str = str()
+        self.decrypted_msg: bytes = bytes()
         logger.debug(f"Created {repr(self)}")
 
     def __str__(self):
         return (
-            f"PluginMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
+            f"EncryptedMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
             f"{self.decrypted_msg}"
         )
 
     def __repr__(self):
         return (
-            f"PluginMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
-            f"{self.decrypted_msg}, {self.dest_pubkey}, {self.nonce}, {self.preimage}, "
-            f"{self.payment_hash}, {self.payment_hash}, {self.sender_pubkey}, "
-            f"{self.decrypted_msg})"
+            f"EncryptedMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
+            f"{self.decrypted_msg}, {self.dest_pubkey}, {self.nonce}, "
+            f"{self.preimage}, {self.payment_hash}, "
+            f"{self.sender_pubkey}, {self.decrypted_msg})"
         )
 
     def encrypt(self):
@@ -96,7 +96,7 @@ class EncryptedMessage:
         # Make sure that we have a nonce, or get __next__()
         if not self.nonce:
             try:
-                self.nonce = self.router.get_nonce(self.gid)
+                self.nonce = self.router.get_nonce(self.gid).to_bytes(16, "big")
             except LookupError:
                 raise
         # Try to encrypt
@@ -106,23 +106,24 @@ class EncryptedMessage:
             )
         except TypeError:
             raise
+        logger.debug(f"Encrypted message: {repr(self)}")
         return self.encrypted_msg
 
     def decrypt(self):
         # The first 4 bytes can be unpacked to reveal the sender GID
         self.gid = struct.unpack(config.be_u32, self.encrypted_msg[0:4])[0]
-        # Next lookup the sender pubkey and nonce to use:
-        self.sender_pubkey = network.router.lookup_pubkey(int(self.gid))
-        try:
-            self.sender_pubkey = self.router.lookup_pubkey(self.gid)
-        except LookupError:
-            raise
+        # Make sure that we have a nonce, or get __next__()
+        if not self.nonce:
+            try:
+                self.nonce = self.router.get_nonce(self.gid).to_bytes(16, "big")
+            except LookupError:
+                raise
         try:
             self.decrypted_msg = crypto.decrypt(
-                config.node_secret_key, self.encrypted_msg, self.nonce
+                config.node_secret_key, bytes(self.encrypted_msg[4:]), self.nonce
             )
-        except TypeError:
-            raise
+        except:
+            logger.exception("Error during decrypt:")
         self.preimage = hashlib.sha256(self.decrypted_msg).digest()
         self.payment_hash = hashlib.sha256(self.preimage).digest()
         return self.preimage, self.payment_hash, self.decrypted_msg
@@ -373,12 +374,11 @@ def parse_update_add_htlc(orig_payload: bytes, to_mesh: bool) -> bytes:
             # Get the message itself
             gid = util.gid_key.get()
             enc_msg = EncryptedMessage(
-                # TODO: Fix this even though it "works"
                 gid=gid,
                 encrypted_msg=orig_payload[86 : 86 + enc_msg_len],
                 router=network.router,
             )
-            enc_msg.nonce = network.router.get_node(gid.nonce)
+            enc_msg.nonce = network.router.get_node(gid).nonce.to_bytes(16, "big")
             logger.info(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 
             # Now we check if the message is "for us" (can we decrypt the message)

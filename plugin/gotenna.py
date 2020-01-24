@@ -47,9 +47,6 @@ def message(
     """sendpay via the mesh connection using key-send (non-interactive)
     args: (goTenna) gid, msatoshi, [label]
     """
-    # We will use 100 satoshis as base payment amount
-    msatoshi = 100_000
-
     # Get the destination pubkey
     dest_pubkey = network.router.lookup_pubkey(gid)
     _message = EncryptedMessage(
@@ -79,8 +76,10 @@ def message(
     peer = config.rpc.listfunds()["channels"][0]["peer_id"]
     logger.info(f"Got next peer {peer}")
 
-    # we add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
-    # we add 60 to cltv (10 hops max, CLTV of 6 each)
+    # We will use 100 satoshis as base payment amount
+    msatoshi = 100_000
+    # We add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
+    # We add 60 to cltv (10 hops max, CLTV of 6 each)
     amt_msat = msatoshi + 10
     cltv = 9 + 60
 
