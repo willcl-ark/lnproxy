@@ -6,6 +6,7 @@ import goTenna
 import trio
 
 import lnproxy.config as config
+import lnproxy.network as network
 import lnproxy.proxy as proxy
 import lnproxy.util as util
 
@@ -66,14 +67,18 @@ class Connection:
 
         if self.is_plugin:
             # Wait for node info to populate from main thread
-            while not config.node_info and len(config.nodes) < 3:
+            while not config.node_info and len(network.router) < 3:
                 time.sleep(1)
-            self.gid = util.get_gid_from_router(config.node_info["id"])
-            self.geo_region = 2
-            self.sdk_token = config.sdk_token
-            self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
-            self.recv_msg_q = queue.Queue()
-            self.start_handlers()
+            try:
+                self.gid = network.router.lookup_gid(config.node_info["id"])
+                self.geo_region = 2
+                self.sdk_token = config.sdk_token
+                self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
+                self.recv_msg_q = queue.Queue()
+                logger.debug("passed loop")
+                self.start_handlers()
+            except:
+                logger.exception("Ouch")
         else:
             self.gid = gid
             self.geo_region = geo_region
@@ -92,40 +97,36 @@ class Connection:
     @staticmethod
     async def parse_recv_mesh_msg(msg: goTenna.message.Message):
         """Parses a received message.
-        If a queue does not exist for this pubkey, then it creates the required queues
-        and will start a new `handle_inbound` (in the main nursery) which will monitor
-        this queue.
+        If a node does not exist for this pubkey, then it creates the node and inits the
+        queues. It will start a new `handle_inbound` (in the main nursery) which will
+        monitor this node.
         Puts the received message in the correct queue (stream) with header stripped.
         """
-        logger.debug(f"parse_receive_message() received message {msg}")
+        logger.debug(f"Received message {msg.payload._binary_data.hex()}")
         _to = msg.destination.gid_val
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
-        if _from in config.handle_inbounds:
-            # We are already handling inbound connections for this node
-            pass
-        else:
-            # If we don't have a handle_inbound running, we must setup the queues and
-            # start one
-            # TODO: probably fix this
-            util.init_queues(_from)
-
-        # If we don't have a queue, make one and start a daemon to manage connection
-        if _from not in config.nodes:
-            # TODO: this needs to be from_gid not _from!!!
-            util.init_queues(_from)
+        try:
+            node = network.router.get_node(_from)
+        except LookupError:
+            logger.error(f"Node {_from} not found in router")
+            # Under normal operation we would want to create the new node here
+            return
+        if (node.outbound or node.inbound) is None:
+            logger.debug("Queues not initialised... Initialising")
+            node.init_queues()
             # start a new handle_inbound for this connection
             await config.nursery.start(proxy.handle_inbound, _from)
-        await config.nodes[_from]["inbound"][0].send_all(msg)
+        await node.inbound[0].send_all(msg.payload._binary_data)
 
     @util.rate_dec()
     async def lookup_and_send(self, msg):
         """Extract to_gid from message header and send the message over the mesh.
         """
         # lookup the recipient GID
+        # TODO: we should send the messages as a tuple with GID here to avoid lookups
         to_gid = int.from_bytes(msg[:8], "big")
-        logger.debug(f"Got GID {to_gid} from message header")
-        # to_gid = util.get_gid(to_pk)
+        # logger.debug(f"Got GID {to_gid} from message header")
         # send to GID using private message in binary mode
         self.send_private(to_gid, msg[8:], binary=True)
 
@@ -208,7 +209,7 @@ class Connection:
                 # self.recv_msg_q.put(evt.message.payload._binary_data)
                 # We put the whole message on the queue so we can extract GID data
                 self.recv_msg_q.put(evt.message)
-                logger.debug(evt.message)
+                # logger.debug(evt.message)
             else:
                 print(f"Received message: {evt.message}")
                 self.recvd_msgs.append(evt)
@@ -220,9 +221,9 @@ class Connection:
                 logger.info("Device physically connected, configure to continue")
                 try:
                     self.configure()
-                except Exception as e:
-                    logger.error(
-                        f"Incurred exception whilst trying to auto-configure:\n{e}",
+                except:
+                    logger.exception(
+                        f"Incurred exception whilst trying to auto-configure:",
                     )
         elif evt.event_type == goTenna.driver.Event.CONNECT:
             if self._awaiting_disconnect_after_fw_update[0]:
@@ -437,7 +438,7 @@ class Connection:
         """ Send a private message to a contact
         GID is the GID to send the private message to.
         """
-        logger.debug(f"Sending message {message} to gid {gid}. Binary={binary}")
+        logger.debug(f"Sending message {message.hex()} to gid {gid}. Binary={binary}")
         _gid, rest = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not self.api_thread.connected:
             logger.error("Must connect first")

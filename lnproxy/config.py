@@ -33,17 +33,6 @@ rpc = None
 # Trio
 nursery = None
 QUEUE = {}
-
-# Lightning node
-# nodes format:
-#   nodes:
-#       {$gid:
-#           {pubkey: None,
-#            nonce: itertools.counter(),
-#            outbound: None,
-#            inbound: None
-#           }
-#       }
 nodes = {}
 node_info = None
 node_secret_key = None

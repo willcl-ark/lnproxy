@@ -2,17 +2,17 @@
 import logging
 import time
 import uuid
-import hashlib
 import pathlib
 
-import lnproxy.crypto as crypto
 import trio
 import lightning
 
 import lnproxy.config as config
-import lnproxy.mesh_connection as mesh
-import lnproxy.pk_from_hsm as pk_from_hsm
-import lnproxy.proxy as proxy
+from lnproxy.mesh_connection import connection_daemon
+from lnproxy.messages import EncryptedMessage
+import lnproxy.network as network
+from lnproxy.pk_from_hsm import get_privkey
+from lnproxy.proxy import serve_outbound
 import lnproxy.util as util
 
 
@@ -30,15 +30,13 @@ def proxy_connect(gid, plugin=None):
     listen_addr = f"/tmp/0{uuid.uuid1().hex}"
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
-    trio.from_thread.run(
-        config.nursery.start, proxy.serve_outbound, f"{listen_addr}", gid
-    )
+    trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", gid)
     # Confirm the socket is created and listening.
     while not pathlib.Path(listen_addr).is_socket():
         time.sleep(0.1)
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
-    pubkey = util.get_pk_from_router(gid)
+    pubkey = network.router.lookup_pubkey(gid)
     return plugin.rpc.connect(str(pubkey), f"{listen_addr}")
 
 
@@ -52,41 +50,30 @@ def message(
     # We will use 100 satoshis as base payment amount
     msatoshi = 100_000
 
-    # Lookup the dest_pubkey from our routing table
-    dest_pubkey = util.get_pk_from_router(gid)
-    logger.info(f"Message to {dest_pubkey}. Body: {message_string}")
-    if not dest_pubkey:
-        return 1
+    # Get the destination pubkey
+    dest_pubkey = network.router.lookup_pubkey(gid)
+    _message = EncryptedMessage(
+        gid=gid,
+        plain_text=message_string,
+        dest_pubkey=dest_pubkey,
+        router=network.router,
+    )
+    try:
+        _message.encrypt()
+    except LookupError:
+        logger.exception("Can't find pubkey or nonce in router")
+    except TypeError:
+        logger.exception("Invalid public key type for encryption")
+    else:
+        logger.info(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
-    description = f"{uuid.uuid1().hex} encrypted message to {dest_pubkey}"
+    description = f"{uuid.uuid1().hex} encrypted message to {_message.dest_pubkey}"
 
-    # Generate the preimage for the payment: sha256(decrypted_message).
-    # If you can decrypt the message, you can generate the preimage.
-    preimage = hashlib.sha256(message_string.encode())
-    logger.info(f"Preimage set as {preimage.hexdigest()}")
-
-    # Generate payment_hash from the preimage
-    payment_hash = hashlib.sha256(preimage.digest())
-    logger.info(f"payment_hash set as {payment_hash.hexdigest()}")
-
-    # Next retrieve the next nonce to use for encryption
-    nonce = config.nodes[gid]["nonce"].__next__().to_bytes(16, "big")
-
-    # Encrypt the message using recipient lightning node_id (pubkey)
-    encrypted_msg = crypto.encrypt(dest_pubkey, message_string.encode(), nonce)
-    logger.info(f"Encrypted message:\n{encrypted_msg.hex()}")
-
-    # Store preimage and encrypted message for later (as bytes).
+    # Store message for later.
     # We will add the encrypted message onto the outbound htlc_add_update message
-    config.key_sends[payment_hash.digest()] = {
-        "preimage": preimage.digest(),
-        "encrypted_msg": encrypted_msg,
-    }
-    logger.info(
-        f"Stored preimage and encrypted message in "
-        f"config.key_sends[{payment_hash.digest()}]"
-    )
+    config.key_sends[_message.payment_hash.digest()] = _message
+    logger.info(f"Stored message at config.key_sends[{_message.payment_hash.digest()}]")
 
     # Get next peer in route
     peer = config.rpc.listfunds()["channels"][0]["peer_id"]
@@ -102,7 +89,9 @@ def message(
     ]
     logger.info(f"Got route to {peer}, executing sendpay command.")
 
-    return config.rpc.sendpay(route, payment_hash.hexdigest(), description, amt_msat)
+    return config.rpc.sendpay(
+        route, _message.payment_hash.hexdigest(), description, amt_msat
+    )
 
 
 @gotenna_plugin.init()
@@ -116,13 +105,12 @@ def init(options, configuration, plugin):
     logger.info(config.node_info)
     # ======= WARNING =======
     # Store our node private key for message decryption
-    config.node_secret_key = str(
-        pk_from_hsm.get_privkey(config.node_info["lightning-dir"])
-    )
+    config.node_secret_key = str(get_privkey(config.node_info["lightning-dir"]))
     logger.info(f"Node private key: {config.node_secret_key}")
     # ===== END WARNING =====
     util.write_pubkey_to_file()
     # Hack to get other node pubkeys
+    # TODO: fix this with new router implementation
     util.read_pubkeys_from_files()
     # Suppress all gossip messages from C-Lightning node.
     plugin.rpc.dev_suppress_gossip()
@@ -142,7 +130,7 @@ async def main():
             # overall control of the app.
             config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
             # # Start the goTenna connection daemon.
-            config.nursery.start_soon(mesh.connection_daemon)
+            config.nursery.start_soon(connection_daemon)
     except:
         logger.exception("whoops")
     finally:
