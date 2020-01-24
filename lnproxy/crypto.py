@@ -1,4 +1,7 @@
-"""Based on eciespy.__init__().py"""
+"""ECIES SECP256K1 encryption and decryption using compressed ephemeral pubkey and
+externally provided nonce.
+Based on ECIESPY.
+"""
 
 from typing import Union
 

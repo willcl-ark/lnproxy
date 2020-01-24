@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lnproxy"
-version = "0.4.0"
+version = "0.5.0"
 description = "Proxy connections from a patched C-Lightning"
 authors = ["Will Clark"]
 license = "MIT"

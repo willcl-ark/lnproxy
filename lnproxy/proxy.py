@@ -41,6 +41,7 @@ class Proxy:
     async def _run_proxy(self, read, write, initiator: bool, to_mesh: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
         (the mesh "queue") or a trio.SocketStream.
+        Should not be called directly, instead use start().
         """
         logger.info(f"Starting proxy(), initiator={initiator}")
         i = 0
@@ -137,8 +138,8 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
         await proxy.start()
     # cleanup after connection closed
     finally:
-        config.handle_inbounds.remove(gid)
         # TODO cleanup config.nodes[gid][inbound / outbound] queues
+        pass
 
 
 async def handle_outbound(stream: trio.SocketStream, gid: int):

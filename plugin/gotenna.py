@@ -58,7 +58,7 @@ def message(
     try:
         _message.encrypt()
     except LookupError:
-        logger.exception("Can't find pubkey or nonce in router")
+        logger.exception("Can't find pubkey or nonce needed for encryption in router")
     except TypeError:
         logger.exception("Invalid public key type for encryption")
     else:
@@ -122,7 +122,6 @@ async def main():
     which must be at startup.
     """
     # This nursery will run our main tasks for us:
-    # https://trio.readthedocs.io/en/stable/reference-core.html#tasks-let-you-do-multiple-things-at-once
     try:
         async with trio.open_nursery() as config.nursery:
             # We run the plugin itself in a synchronous thread so trio.run() maintains

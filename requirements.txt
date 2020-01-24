@@ -108,7 +108,7 @@ eth-typing==2.2.1 \
 eth-utils==1.8.4 \
     --hash=sha256:f398c649859cda5ef7c4ee2753468038d93be7d864de7631c06c3e73a7060649 \
     --hash=sha256:8358318685e7a7666b148b07df3c4d409435b424dce18501e79920aa52bcaba7
-https://github.com/gotenna/PublicSDK/raw/master/python-public-sdk/goTenna-0.12.5-py3-none-any.whl
+-e https://github.com/gotenna/PublicSDK/raw/master/python-public-sdk/goTenna-0.12.5-py3-none-any.whl
 hkdf==0.0.3 \
     --hash=sha256:622a31c634bc185581530a4b44ffb731ed208acf4614f9c795bdd70e77991dca
 idna==2.8 \

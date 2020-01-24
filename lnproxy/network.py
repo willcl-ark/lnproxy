@@ -20,7 +20,7 @@ class Node:
         self._nonce = nonce if nonce else itertools.count(0)
         self.outbound = outbound
         self.inbound = inbound
-        # message header is GID as Big Endian 8 bytestring
+        # Node message header is GID as Big Endian 8 bytestring
         self.header = self.gid.to_bytes(8, "big")
 
     def __str__(self):
@@ -107,7 +107,6 @@ class Router:
         """Returns the first node found in the router with matching GID.
         """
         return self.by_gid[gid]
-        # return [node for node in self.nodes if node.gid == gid][0]
 
     def get_nonce(self, gid):
         for node in self.nodes:

@@ -26,20 +26,15 @@ home = str(pathlib.Path.home())
 ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
 
 # Plugin
-plugin = None
-rpc_s = {1: None, 2: None, 3: None}
 rpc = None
 
 # Trio
 nursery = None
-QUEUE = {}
-nodes = {}
 node_info = None
 node_secret_key = None
 key_sends = {}
 # handle_inbounds is a list of pubkey[:4] for each node_pubkey we have a handle_inbound
 # running for
-handle_inbounds = []
 
 # goTenna Mesh
 mesh_conn = None
