@@ -92,12 +92,9 @@ class EncryptedMessage:
         # Generate the preimage and payment hash
         self.preimage = hashlib.sha256(self.plain_text.encode("utf-8"))
         self.payment_hash = hashlib.sha256(self.preimage.digest())
-        # Make sure that we have a nonce, or get __next__()
-        if not self.nonce:
-            try:
-                self.nonce = self.router.get_nonce(self.gid).to_bytes(16, "big")
-            except LookupError:
-                raise
+        # Set the nonce to the first 16 bytes of the payment_hash
+        # TODO: Is this secure enough?
+        self.nonce = self.payment_hash.digest()[:16]
         # Try to encrypt
         try:
             self.encrypted_msg = crypto.encrypt(
@@ -108,15 +105,9 @@ class EncryptedMessage:
         logger.debug(f"Encrypted message: {repr(self)}")
         return self.encrypted_msg
 
-    def decrypt(self):
-        # The first 4 bytes can be unpacked to reveal the sender GID
-        self.gid = struct.unpack(config.be_u32, self.encrypted_msg[0:4])[0]
-        # Make sure that we have a nonce, or get __next__()
-        if not self.nonce:
-            try:
-                self.nonce = self.router.get_nonce(self.gid).to_bytes(16, "big")
-            except LookupError:
-                raise
+    def decrypt(self, payment_hash):
+        # Set the nonce to the first 16 bytes of the payment_hash
+        self.nonce = payment_hash[:16]
         try:
             self.decrypted_msg = crypto.decrypt(
                 config.node_secret_key, bytes(self.encrypted_msg[4:]), self.nonce
@@ -172,15 +163,10 @@ class AddUpdateHTLC:
         logger.info(f"cltv_expiry: {cltv_expiry}")
 
     def get_encrypted_msg(self):
-        """Looks up and returns an encrypted message with our (sender) GID attached so
-            that recipient can use correct nonce
+        """Looks up and returns an encrypted message.
             """
-        # We will send our GID as a u32
-        my_gid = struct.pack(
-            config.be_u32, network.router.lookup_gid(config.node_info["id"])
-        )
         msg = bytearray()
-        msg += my_gid
+        # msg += my_gid
         msg += config.key_sends[self.payment_hash].encrypted_msg
         header = struct.pack(config.be_u16, len(msg))
         logger.info(
@@ -258,7 +244,9 @@ class AddUpdateHTLC:
 
         # Now we check if the message is "for us" (can we decrypt the message)
         try:
-            (derived_preimage, derived_payment_hash, decrypted_msg,) = enc_msg.decrypt()
+            (derived_preimage, derived_payment_hash, decrypted_msg,) = enc_msg.decrypt(
+                self.payment_hash
+            )
         # Decode failed, this is not for us
         except:
             logger.error(f"Could not decrypt encrypted message")
@@ -364,10 +352,6 @@ class LightningMessage:
 
         # Bolt #8: Lightning message
         body = await util.receive_exactly(stream, body_len)
-
-        # TODO: this should be a method called after the class is created!!!
-        # # parse the message
-        # cls.parse(header, body, to_mesh)
 
         # Bolt #8: 16 Byte MAC of the Lightning message
         body_mac = await util.receive_exactly(stream, config.MSG_MAC)
