@@ -17,28 +17,29 @@ import lnproxy.util as util
 
 
 gotenna_plugin = lightning.Plugin()
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("plugin")
 
 
 @gotenna_plugin.method("proxy-connect")
-def proxy_connect(pubkey, plugin=None):
+def proxy_connect(gid, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
-    logging.info(f"proxy-connect to pubkey {pubkey} via goTenna mesh connection")
+    logging.info(f"proxy-connect to gid {gid} via goTenna mesh connection")
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid1().hex}"
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
     trio.from_thread.run(
-        config.nursery.start, proxy.serve_outbound, f"{listen_addr}", pubkey
+        config.nursery.start, proxy.serve_outbound, f"{listen_addr}", gid
     )
     # Confirm the socket is created and listening.
     while not pathlib.Path(listen_addr).is_socket():
         time.sleep(0.1)
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
-    return plugin.rpc.connect(pubkey, f"{listen_addr}")
+    pubkey = util.get_pk_from_router(gid)
+    return plugin.rpc.connect(str(pubkey), f"{listen_addr}")
 
 
 @gotenna_plugin.method("message")
@@ -52,11 +53,12 @@ def message(
     msatoshi = 100_000
 
     # Lookup the dest_pubkey from our routing table
-    dest_pubkey = util.get_pubkey_from_routing_table(gid)
-
+    dest_pubkey = util.get_pk_from_router(gid)
     logger.info(f"Message to {dest_pubkey}. Body: {message_string}")
+    if not dest_pubkey:
+        return 1
 
-    # Create a semi-random description to satisfy C-Lightning's accounting system
+    # Create a pseudo-random description to satisfy C-Lightning's accounting system
     description = f"{uuid.uuid1().hex} encrypted message to {dest_pubkey}"
 
     # Generate the preimage for the payment: sha256(decrypted_message).
@@ -69,7 +71,7 @@ def message(
     logger.info(f"payment_hash set as {payment_hash.hexdigest()}")
 
     # Next retrieve the next nonce to use for encryption
-    nonce = config.QUEUE[dest_pubkey[0:4]]["nonce"].__next__().to_bytes(16, "big")
+    nonce = config.nodes[gid]["nonce"].__next__().to_bytes(16, "big")
 
     # Encrypt the message using recipient lightning node_id (pubkey)
     encrypted_msg = crypto.encrypt(dest_pubkey, message_string.encode(), nonce)

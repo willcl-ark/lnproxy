@@ -133,7 +133,7 @@ def decrypt_message(message: bytes) -> [bytes, bytes]:
     # The first 4 bytes can be unpacked to reveal the sender GID
     sender_gid = struct.unpack(config.be_u32, message[0:4])[0]
     # Next lookup the sender pubkey and nonce to use:
-    sender_pubkey = util.get_pubkey_from_routing_table(int(sender_gid))
+    sender_pubkey = util.get_pk_from_router(int(sender_gid))
     # Retrieve the current nonce for this sender
     nonce = config.QUEUE[sender_pubkey[0:4]]["nonce"].__next__().to_bytes(16, "big")
     logger.info(f"NONCE used for decryption: {nonce}")
@@ -299,7 +299,10 @@ async def read_handshake_msg(stream, i: int, initiator: bool) -> bytes:
     message = bytearray()
     # logger.info(f"Trying receive_exactly for {req_len}B from read_handshake")
     # message += await util.receive_exactly(stream, req_len)
-    message += await stream.receive_some(req_len)
+    try:
+        message += await stream.receive_some(req_len)
+    except:
+        logger.exception("read_handshake")
     return message
 
 

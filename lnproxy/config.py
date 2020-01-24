@@ -21,8 +21,6 @@ MSG_MAC: int = 16
 
 # System-agnostic home-path generator
 home = str(pathlib.Path.home())
-# lnproxy_home = f"{home}/.lnproxy"
-# Path(lnproxy_home).mkdir(parents=True, exist_ok=True)
 
 # Onion tool path
 ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
@@ -37,10 +35,22 @@ nursery = None
 QUEUE = {}
 
 # Lightning node
+# nodes format:
+#   nodes:
+#       {$gid:
+#           {pubkey: None,
+#            nonce: itertools.counter(),
+#            outbound: None,
+#            inbound: None
+#           }
+#       }
 nodes = {}
 node_info = None
 node_secret_key = None
 key_sends = {}
+# handle_inbounds is a list of pubkey[:4] for each node_pubkey we have a handle_inbound
+# running for
+handle_inbounds = []
 
 # goTenna Mesh
 mesh_conn = None

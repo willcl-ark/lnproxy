@@ -26,12 +26,15 @@ async def connection_daemon():
     Start the send_queue_daemon in the main nursery.
     """
     # Wait for node info to populate.
+    i = 0
     while config.node_info is None:
-        logger.info("Can't find node_info")
+        if i > 5:
+            logger.info("Waiting for node info in config.node_info")
         await trio.sleep(0.1)
+        i += 1
     logger.info("Got node info, starting connection")
     # start the mesh connection
-    config.mesh_conn = Connection(plugin=True)
+    config.mesh_conn = Connection(is_plugin=True)
     # start the send_queue_daemon:
     while config.mesh_conn.active is False:
         await trio.sleep(0.1)
@@ -43,9 +46,9 @@ class Connection:
     """goTenna connection class
     """
 
-    def __init__(self, plugin=False):
+    def __init__(self, is_plugin=False, gid=None, geo_region=None, sdk_token=None):
         logger.info("Initialising goTenna Connection object")
-        self.plugin = plugin
+        self.is_plugin = is_plugin
         self.active = False
         self.api_thread = None
         self.status = {}
@@ -60,21 +63,25 @@ class Connection:
         )
         self._do_encryption = True
         self._awaiting_disconnect_after_fw_update = [False]
-        # Wait for node info to populate from main thread
-        while not config.node_info:
-            time.sleep(0.1)
-        while config.node_info["id"] not in config.nodes:
-            time.sleep(0.1)
-        self.gid = config.nodes[config.node_info["id"]]
-        self.geo_region = 2
-        self.sdk_token = config.sdk_token
-        if plugin:
+
+        if self.is_plugin:
+            # Wait for node info to populate from main thread
+            while not config.node_info and len(config.nodes) < 3:
+                time.sleep(1)
+            self.gid = util.get_gid_from_router(config.node_info["id"])
+            self.geo_region = 2
+            self.sdk_token = config.sdk_token
             self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
             self.recv_msg_q = queue.Queue()
             self.start_handlers()
-            self.configure()
-            self.active = True
-            logger.info("goTenna Connection object initialised")
+        else:
+            self.gid = gid
+            self.geo_region = geo_region
+            self.sdk_token = sdk_token
+            self.recvd_msgs = []
+        self.configure()
+        self.active = True
+        logger.info("goTenna Connection object initialised")
 
     def start_handlers(self):
         # start the queue handlers in the main nursery
@@ -83,33 +90,44 @@ class Connection:
         logger.info("goTenna Connection handlers started")
 
     @staticmethod
-    async def parse_recv_mesh_msg(msg: bytes):
-        """Parses the header of a received message.
+    async def parse_recv_mesh_msg(msg: goTenna.message.Message):
+        """Parses a received message.
         If a queue does not exist for this pubkey, then it creates the required queues
         and will start a new `handle_inbound` (in the main nursery) which will monitor
         this queue.
         Puts the received message in the correct queue (stream) with header stripped.
         """
-        _to = msg[0:2].hex()
-        _from = msg[2:4].hex()
-        _msg = msg[4:]
+        logger.debug(f"parse_receive_message() received message {msg}")
+        _to = msg.destination.gid_val
+        _from = msg.payload.sender.gid_val
+        # check if we already have a handle_inbound running, if so continue
+        if _from in config.handle_inbounds:
+            # We are already handling inbound connections for this node
+            pass
+        else:
+            # If we don't have a handle_inbound running, we must setup the queues and
+            # start one
+            # TODO: probably fix this
+            util.init_queues(_from)
+
         # If we don't have a queue, make one and start a daemon to manage connection
-        if _from not in config.QUEUE:
-            util.create_queue(_from)
+        if _from not in config.nodes:
+            # TODO: this needs to be from_gid not _from!!!
+            util.init_queues(_from)
             # start a new handle_inbound for this connection
             await config.nursery.start(proxy.handle_inbound, _from)
-        await config.QUEUE[_from]["inbound"][0].send_all(_msg)
+        await config.nodes[_from]["inbound"][0].send_all(msg)
 
     @util.rate_dec()
     async def lookup_and_send(self, msg):
-        """Get a GID from the lookup table based on the "to" pk in the message header
-        and send the message via the mesh.
+        """Extract to_gid from message header and send the message over the mesh.
         """
         # lookup the recipient GID
-        to_pk = msg[0:2]
-        to_gid = util.get_gid(to_pk)
+        to_gid = int.from_bytes(msg[:8], "big")
+        logger.debug(f"Got GID {to_gid} from message header")
+        # to_gid = util.get_gid(to_pk)
         # send to GID using private message in binary mode
-        self.send_private(to_gid, msg, binary=True)
+        self.send_private(to_gid, msg[8:], binary=True)
 
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
@@ -167,7 +185,7 @@ class Connection:
                     self.event_callback,
                 )
             # Manage the API thread with Trio so we can communicate back to it if needed
-            if self.plugin:
+            if self.is_plugin:
                 config.nursery.start_soon(
                     trio.to_thread.run_sync, self.api_thread.run,
                 )
@@ -186,10 +204,14 @@ class Connection:
         """
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
-            if self.plugin:
-                self.recv_msg_q.put(evt.message.payload._binary_data)
+            if self.is_plugin:
+                # self.recv_msg_q.put(evt.message.payload._binary_data)
+                # We put the whole message on the queue so we can extract GID data
+                self.recv_msg_q.put(evt.message)
+                logger.debug(evt.message)
             else:
-                logger.info(f"Received message: {evt.message}")
+                print(f"Received message: {evt.message}")
+                self.recvd_msgs.append(evt)
 
         elif evt.event_type == goTenna.driver.Event.DEVICE_PRESENT:
             if self._awaiting_disconnect_after_fw_update[0]:
@@ -415,6 +437,7 @@ class Connection:
         """ Send a private message to a contact
         GID is the GID to send the private message to.
         """
+        logger.debug(f"Sending message {message} to gid {gid}. Binary={binary}")
         _gid, rest = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not self.api_thread.connected:
             logger.error("Must connect first")

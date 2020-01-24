@@ -18,29 +18,32 @@ async def send_queue_daemon():
     """
     logger.info("Started send_queue_daemon")
     while True:
-        if len(config.QUEUE) == 0:
+        if len(config.nodes) == 0:
             # No connections yet
             await trio.sleep(0.1)
         else:
             # We can't modify a dictionary during iteration so cast to a list each time
             # and iterate over that.
-            queues = list(config.QUEUE.items())
+            queues = list(config.nodes.items())
             # We have connections to check
-            for pubkey in queues:
-                try:
-                    msg = pubkey[1]["outbound"][1].receive_nowait()
-                except trio.WouldBlock:
-                    await trio.sleep(0.1)
-                except:
-                    logger.exception("send_queue_daemon():")
+            for gid in queues:
+                if gid[1]["outbound"] is not None:
+                    try:
+                        msg = gid[1]["outbound"][1].receive_nowait()
+                    except trio.WouldBlock:
+                        await trio.sleep(0.1)
+                    except:
+                        logger.exception("send_queue_daemon:")
+                    else:
+                        # header is GID as Big Endian 8 bytestring
+                        header = (int(gid)).to_bytes(8, "big")
+                        # Split it into 200B chunks and add header
+                        msg_iter = util.chunk_to_list(msg, 200, header)
+                        # Add it to send_mesh memory_channel
+                        for message in msg_iter:
+                            await config.mesh_conn.send_mesh_send.send(message)
                 else:
-                    # Message headers are first 4B of TO and FROM pubkeys
-                    header = pubkey[0][0:4] + config.node_info["id"][0:4]
-                    # Split it into 200B chunks and add header
-                    msg_iter = util.chunk_to_list(msg, 200, bytes.fromhex(header))
-                    # Add it to send_mesh memory_channel
-                    for message in msg_iter:
-                        await config.mesh_conn.send_mesh_send.send(message)
+                    await trio.sleep(1)
 
 
 async def read_message(
@@ -86,28 +89,30 @@ async def proxy(read: trio.SocketStream, write, initiator: bool, to_mesh: bool):
             i += 1
 
 
-async def proxy_nursery(stream, _pubkey: str, stream_init: bool, q_init: bool):
+async def proxy_nursery(stream, gid: int, stream_init: bool, q_init: bool):
     """Helper that runs each proxy operation (pair) in it's own nursery.
     This means that an error with a single connection won't crash the whole program.
     """
-    logger.info(f"Proxying between local node and {_pubkey}")
+    logger.info(f"Proxying between local node and GID {gid}")
     # # Set a session key as a contextvar for this proxy session
     # util.session_key.set()
     async with trio.open_nursery() as nursery:
         nursery.start_soon(
-            proxy, stream, config.QUEUE[_pubkey]["outbound"][0], stream_init, True
+            proxy, stream, config.nodes[gid]["outbound"][0], stream_init, True
         )
         nursery.start_soon(
-            proxy, config.QUEUE[_pubkey]["inbound"][1], stream, q_init, False
+            proxy, config.nodes[gid]["inbound"][1], stream, q_init, False
         )
 
 
-async def handle_inbound(pubkey: str, task_status=trio.TASK_STATUS_IGNORED):
+async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     """Handle a new inbound connection from the mesh.
     Will open a new connection to local C-Lightning node and then proxy the connections.
     """
-    logger.info(f"Handling new incoming connection from pubkey: {pubkey}")
-    util.pubkey_var.set(pubkey)
+    logger.info(f"Handling new incoming connection from GID: {gid}")
+    # Add it to the list of handle_inbounds running
+    config.handle_inbounds.append(gid)
+    util.pubkey_var.set(gid)
     # First connect to our local C-Lightning node.
     try:
         stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
@@ -119,32 +124,32 @@ async def handle_inbound(pubkey: str, task_status=trio.TASK_STATUS_IGNORED):
         task_status.started()
         # Next proxy between the queue and the socket.
         # q_init is True because remote is handshake initiator.
-        await proxy_nursery(stream, pubkey, stream_init=False, q_init=True)
+        await proxy_nursery(stream, gid, stream_init=False, q_init=True)
+    # cleanup after connection closed
+    finally:
+        config.handle_inbounds.remove(gid)
+        # TODO cleanup config.nodes[gid][inbound / outbound] queues
 
 
-async def handle_outbound(stream: trio.SocketStream, pubkey: str):
+async def handle_outbound(stream: trio.SocketStream, gid: int):
     """Handles an outbound connection, creating the required (mesh) queues if necessary
     and then proxying the connection with the mesh queue.
     """
-    util.pubkey_var.set(pubkey[0:4])
-    _pubkey = pubkey[0:4]
-    logger.info(f"Handling new outbound connection to pubkey: {_pubkey}")
-    if _pubkey not in config.QUEUE:
-        try:
-            util.create_queue(_pubkey)
-        except:
-            logger.exception("util.create_queue():")
-        # Next proxy between the queue and the socket.
-        # stream_init is True because we are handshake initiator.
+    util.pubkey_var.set(gid)
+    logger.info(f"Handling new outbound connection to GID: {gid}")
     try:
-        await proxy_nursery(stream, _pubkey, stream_init=True, q_init=False)
+        util.init_queues(gid)
+    except:
+        logger.exception("util.create_queue():")
+    # Next proxy between the queue and the socket.
+    # stream_init is True because we are handshake initiator.
+    try:
+        await proxy_nursery(stream, gid, stream_init=True, q_init=False)
     except:
         logger.exception("handle_outbound():")
 
 
-async def serve_outbound(
-    listen_addr, pubkey: str, task_status=trio.TASK_STATUS_IGNORED
-):
+async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGNORED):
     """Serve a listening socket at listen_addr.
     Start a single handle_outbound for the first connection received to this socket.
     This will be run once per outbound connection made by C-Lightning (using rpc
@@ -163,5 +168,5 @@ async def serve_outbound(
         await trio._highlevel_serve_listeners._serve_one_listener(
             trio.SocketListener(sock),
             nursery,
-            functools.partial(handle_outbound, pubkey=pubkey),
+            functools.partial(handle_outbound, gid=gid),
         )
