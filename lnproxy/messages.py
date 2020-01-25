@@ -57,12 +57,10 @@ class EncryptedMessage:
         encrypted_msg: bytes = None,
         dest_pubkey: str = None,
         nonce: bytes = None,
-        router=None,
     ):
         self.gid = gid
         self.plain_text = plain_text
         self.encrypted_msg = encrypted_msg
-        self.router = router
         self.msatoshi: int = int()
         self.dest_pubkey = dest_pubkey
         self.nonce: bytes = nonce
@@ -88,7 +86,7 @@ class EncryptedMessage:
 
     def encrypt(self):
         # First lookup the pubkey from the GID
-        self.dest_pubkey = self.router.lookup_pubkey(self.gid)
+        self.dest_pubkey = network.router.lookup_pubkey(self.gid)
         # Generate the preimage and payment hash
         self.preimage = hashlib.sha256(self.plain_text.encode("utf-8"))
         self.payment_hash = hashlib.sha256(self.preimage.digest())
@@ -105,12 +103,12 @@ class EncryptedMessage:
         logger.debug(f"Encrypted message: {repr(self)}")
         return self.encrypted_msg
 
-    def decrypt(self, payment_hash):
+    def decrypt(self, payment_hash: bytes):
         # Set the nonce to the first 16 bytes of the payment_hash
         self.nonce = payment_hash[:16]
         try:
             self.decrypted_msg = crypto.decrypt(
-                config.node_secret_key, bytes(self.encrypted_msg[4:]), self.nonce
+                config.node_secret_key, bytes(self.encrypted_msg), self.nonce
             )
         except:
             logger.exception("Error during decryption")
@@ -233,12 +231,7 @@ class AddUpdateHTLC:
         enc_msg_len = struct.unpack(config.be_u16, self.payload[84:86])[0]
         logger.info(f"Encoded message length: {enc_msg_len}")
         # Get the message itself
-        gid = util.gid_key.get()
-        enc_msg = EncryptedMessage(
-            gid=gid,
-            encrypted_msg=self.payload[86 : 86 + enc_msg_len],
-            router=network.router,
-        )
+        enc_msg = EncryptedMessage(encrypted_msg=self.payload[86 : 86 + enc_msg_len],)
         # enc_msg.nonce = network.router.get_node(gid).nonce.to_bytes(16, "big")
         logger.info(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 

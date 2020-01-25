@@ -50,10 +50,7 @@ def message(
     # Get the destination pubkey
     dest_pubkey = network.router.lookup_pubkey(gid)
     _message = EncryptedMessage(
-        gid=gid,
-        plain_text=message_string,
-        dest_pubkey=dest_pubkey,
-        router=network.router,
+        gid=gid, plain_text=message_string, dest_pubkey=dest_pubkey,
     )
     try:
         _message.encrypt()
