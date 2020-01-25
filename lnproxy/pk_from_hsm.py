@@ -19,7 +19,7 @@ logger = CustomAdapter(logging.getLogger(__name__), None)
 nodes = [0, 1, 2]
 
 
-def get_privkey(ln_dir):
+def get_privkey(ln_dir, known_pubkey: str):
     hsm_secret = open(f"{ln_dir}/hsm_secret", "rb").read()
     logger.debug(f"hsm_secret: {hsm_secret}")
 
@@ -47,15 +47,13 @@ def get_privkey(ln_dir):
             break
 
     # Check public key derived from the private key against node id
-    ln = lightning.LightningRpc(f"{ln_dir}/lightning-rpc")
-    node_pubkey = ln.getinfo()["id"]
-    if not privkey.pubkey.serialize().hex() == node_pubkey:
+    if not privkey.pubkey.serialize().hex() == known_pubkey:
         logger.warning(
             f"Valid secp265k1 derived pubkey doesn't appear to match "
             f"lightning node id:"
         )
         logger.warning(f"generated: {privkey.pubkey.serialize().hex()}")
-        logger.warning(f"actual:    {node_pubkey}")
+        logger.warning(f"actual:    {known_pubkey}")
     return key.hex()
 
 
@@ -63,9 +61,10 @@ def main():
     for node in nodes:
         ln_dir = f"/tmp/l{node + 1}-regtest/regtest"
         ln = lightning.LightningRpc(f"{ln_dir}/lightning-rpc")
+        pubkey = ln.getinfo()["id"]
         logger.info(f"Node {node +1}:")
-        logger.info(f"privkey: {get_privkey(ln_dir)}")
-        logger.info(f"pubkey:  {ln.getinfo()['id']}")
+        logger.info(f"privkey: {get_privkey(ln_dir, pubkey)}")
+        logger.info(f"pubkey:  {pubkey}")
 
 
 if __name__ == "__main__":
