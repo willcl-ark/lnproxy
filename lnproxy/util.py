@@ -2,14 +2,12 @@ import contextvars
 import functools
 import logging
 import pathlib
-import re
 import struct
 import time
 
 import trio
 
 import lnproxy.config as config
-import lnproxy.network as network
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
@@ -201,40 +199,3 @@ def rate_dec():
         return limit
 
     return rate_limit
-
-
-def write_pubkey_to_file():
-    """Write lightning node pubkey to file named based on ln_dir
-    """
-    node_info = config.node_info
-    node_id = node_info["id"]
-    node_num = int(re.findall("\d+", node_info["lightning-dir"])[0])
-    p = pathlib.Path(f"/tmp/l{node_num}-pubkey")
-    with open(p, "wt") as s:
-        s.write(node_id)
-    logger.info(f"Written pubkey {node_id} to {p}")
-
-
-def read_pubkeys_from_files():
-    """Hack to exchange node pubkey info automagically as they rotate while testing.
-    Would usually be done out of band, or could switch to GID-first system.
-    """
-    l1 = pathlib.Path("/tmp/l1-pubkey")
-    l2 = pathlib.Path("/tmp/l2-pubkey")
-    l3 = pathlib.Path("/tmp/l3-pubkey")
-    nodes = [l1, l2, l3]
-
-    while True:
-        if l1.exists() and l2.exists() and l3.exists():
-            break
-        else:
-            time.sleep(0.1)
-    gid = 10000001
-    for node in nodes:
-        with open(node) as n:
-            network.router.add(network.Node(gid, n.read()))
-            # add_node_to_router(gid, pubkey=n.read())
-        gid += 1
-    logger.info(
-        f"Read pubkeys from files and written to network router\n{network.router}"
-    )
