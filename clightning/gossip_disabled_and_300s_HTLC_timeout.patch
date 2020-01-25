@@ -1,0 +1,36 @@
+Index: gossipd/gossipd.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- gossipd/gossipd.c	(revision 3418e59d764531b9ed14137a1743f7fcc88b76cf)
++++ gossipd/gossipd.c	(revision 8d4203e9a6f3db109536e01b380a985cad2a3b3d)
+@@ -561,6 +561,12 @@
+ 	if (!gossip_queries_feature)
+ 		return GOSSIP_HIGH;
+ 
++#if DEVELOPER
++	/* Don't ask new peers for new gossip if dev-suppress-gossip has been set*/
++	if (suppress_gossip)
++	    return GOSSIP_NONE;
++#endif
++
+ 	/* Figure out how many we have at each level. */
+ 	memset(gossip_levels, 0, sizeof(gossip_levels));
+ 	list_for_each(&daemon->peers, peer, list)
+Index: lightningd/peer_htlcs.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- lightningd/peer_htlcs.c	(revision 122f5bb42b1ed7c48378924624e27b247ce77474)
++++ lightningd/peer_htlcs.c	(revision 2b9e6663666ee0b7b499a1eb892b5173e251ea98)
+@@ -474,7 +474,7 @@
+ 	/* Give channel 30 seconds to commit (first) htlc. */
+ 	if (!out->htlc_timeout && !IFDEV(out->peer->ld->dev_no_htlc_timeout, 0))
+ 		out->htlc_timeout = new_reltimer(out->peer->ld->timers,
+-						 out, time_from_sec(30),
++						 out, time_from_sec(300),
+ 						 htlc_offer_timeout,
+ 						 out);
+ 	msg = towire_channel_offer_htlc(out, amount, cltv, payment_hash,
