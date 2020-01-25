@@ -207,7 +207,8 @@ class AddUpdateHTLC:
             )
 
         # add the new onion to original payload
-        return self.payload + self.onion
+        # This slice ensures we cut off eny encrypted message
+        return self.payload[0:84] + self.onion
 
     def handle_key_send(self, derived_preimage, derived_payment_hash, decrypted_msg):
         logger.info(f"payment_hash:         {self.payment_hash.hex()}")
