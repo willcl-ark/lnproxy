@@ -11,7 +11,6 @@ from secp256k1 import PublicKey
 
 import lnproxy.config as config
 import lnproxy.network as network
-import lnproxy.util as util
 from lnproxy.mesh_connection import connection_daemon
 from lnproxy.messages import EncryptedMessage
 from lnproxy.pk_from_hsm import get_privkey
@@ -30,11 +29,18 @@ gotenna_plugin.add_option(
 )
 
 
-@gotenna_plugin.method("node-info")
-def node_info(plugin=None):
-    node_pubkey = plugin.rpc.getinfo()["id"]
-    node_gid = plugin.get_option("gid")
-    return {"node_pubkey": node_pubkey, "node_gid": node_gid}
+@gotenna_plugin.method("show-router")
+def show_router(plugin=None):
+    """Returns the current view of the goTenna plugin's router.
+    """
+    return str(network.router)
+
+
+@gotenna_plugin.method("gid")
+def get_gid(plugin=None):
+    """Returns the goTenna GID used by this node.
+    """
+    return plugin.get_option("gid")
 
 
 @gotenna_plugin.method("add-node")
@@ -44,17 +50,41 @@ def add_node(gid, pubkey, plugin=None):
     arg: pubkey: a node's lightning pubkey
     """
     # Check that GID and pubkey are valid
-    assert 0 <= gid <= GID_MAX
-    # TODO: check pubkey is valid
-    # try:
-    #     _pubkey = PublicKey(pubkey=pubkey.encode("utf-8"), raw=True)
-    # except Exception:
-    #     logger.exception("Error with pubkey")
-
+    assert 0 <= int(gid) <= GID_MAX
+    try:
+        _pubkey = PublicKey(pubkey=bytes.fromhex(pubkey), raw=True)
+    except Exception:
+        logger.exception("Error with pubkey")
     # Add to router
     _node = network.Node(int(gid), str(pubkey))
+    # Check for dupes
+    if gid in network.router:
+        return (
+            f"GID {gid} already in router, remove before adding again: "
+            f"{network.router.get_node(gid)}"
+        )
+    if pubkey in network.router:
+        return (
+            f"Pubkey {pubkey} already in router, remove before adding again: "
+            f"{network.router.get_node(network.router.lookup_gid(pubkey))}"
+        )
+
     network.router.add(_node)
-    return f"{_node} added to gotenna plugin router:\n{network.router}"
+    return f"{_node} added to gotenna plugin router."
+
+
+@gotenna_plugin.method("remove-node")
+def remove_node(gid, plugin=None):
+    """Remove a node from the network router using GID
+    """
+    if gid not in network.router:
+        return f"GID {gid} not found in router."
+    try:
+        network.router.remove(gid)
+    except Exception as e:
+        return e
+    else:
+        return f"Node with GID {gid} removed from router."
 
 
 @gotenna_plugin.method("proxy-connect")
@@ -78,10 +108,10 @@ def proxy_connect(gid, plugin=None):
 
 @gotenna_plugin.method("message")
 def message(
-    gid, message_string, plugin=None,
+    gid, message_string, msatoshi: int = 100_000, plugin=None,
 ):
-    """sendpay via the mesh connection using key-send (non-interactive)
-    args: (goTenna) gid, msatoshi, [label]
+    """Send a message via the mesh connection paid for using key-send (non-interactive)
+    args: (goTenna) gid, msatoshi, msatoshi
     """
     # Get the destination pubkey
     dest_pubkey = network.router.lookup_pubkey(gid)
@@ -101,23 +131,24 @@ def message(
     description = f"{uuid.uuid1().hex} encrypted message to {_message.dest_pubkey}"
 
     # Store message for later.
-    # We will add the encrypted message onto the outbound htlc_add_update message
+    # The traffic proxy will add the encrypted message onto the outbound
+    # htlc_add_update message.
     config.key_sends[_message.payment_hash.digest()] = _message
     logger.debug(
         f"Stored message at config.key_sends[{_message.payment_hash.digest()}]"
     )
 
     # Get next peer in route
+    # TODO: Improve routing here; tap into gotenna routing table.
     peer = config.rpc.listfunds()["channels"][0]["peer_id"]
     logger.debug(f"Got next peer {peer}")
 
-    # We will use 100 satoshis as base payment amount
-    msatoshi = 100_000
     # We add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
     # We add 60 to cltv (10 hops max, CLTV of 6 each)
     amt_msat = msatoshi + 10
     cltv = 9 + 60
 
+    # Get the route to the next hop.
     route = config.rpc.getroute(peer, msatoshi=amt_msat, riskfactor=10, cltv=cltv)[
         "route"
     ]
@@ -129,26 +160,31 @@ def message(
 
 
 @gotenna_plugin.init()
-# Unused parameters used by lightning.plugin() internally
+# Parameters used by gotenna_plugin() internally
 def init(options, configuration, plugin):
     logger.info("Starting goTenna plugin")
     # Store the RPC in config to be accessible by all modules.
     config.rpc = plugin.rpc
-    # Get the local lightning node info.
+    # Get the local lightning node info to avoid multiple lookups.
     config.node_info = plugin.rpc.getinfo()
-    logger.info(config.node_info)
+    logger.debug(config.node_info)
+    # Add ourselves to the routing table
+    add_node(plugin.get_option("gid"), config.node_info["id"])
+    logger.debug(network.router)
     # ======= WARNING =======
     # Store our node private key for message decryption
-    config.node_secret_key = str(get_privkey(config.node_info["lightning-dir"]))
-    logger.info(f"Node private key: {config.node_secret_key}")
+    config.node_secret_key = str(
+        get_privkey(config.node_info["lightning-dir"], config.node_info["id"])
+    )
+    logger.debug(f"Node private key: {config.node_secret_key}")
     # ===== END WARNING =====
-    util.write_pubkey_to_file()
-    # Hack to get other node pubkeys
-    # TODO: fix this with new router implementation
-    # util.read_pubkeys_from_files()
-    # Suppress all gossip messages from C-Lightning node.
+    # Suppress all C-Lightning gossip messages for newly-connected peers.
     plugin.rpc.dev_suppress_gossip()
-    logger.info("goTenna plugin initialized")
+    # Show the user the new RPCs available
+    commands = list(plugin.methods.keys())
+    commands.remove("init")
+    commands.remove("getmanifest")
+    logger.info(f"goTenna plugin initialised. Added RPC commands: {commands}")
 
 
 async def main():
@@ -163,7 +199,7 @@ async def main():
             # overall control of the app.
             config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
             # Start the goTenna connection daemon.
-            # config.nursery.start_soon(connection_daemon)
+            config.nursery.start_soon(connection_daemon)
     except:
         logger.exception("Exception in main loop:")
     finally:
