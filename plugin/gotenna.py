@@ -11,7 +11,7 @@ from secp256k1 import PublicKey
 
 import lnproxy.config as config
 import lnproxy.network as network
-from lnproxy.mesh_connection import connection_daemon
+from lnproxy.mesh import connection_daemon
 from lnproxy.messages import EncryptedMessage
 from lnproxy.pk_from_hsm import get_privkey
 from lnproxy.proxy import serve_outbound

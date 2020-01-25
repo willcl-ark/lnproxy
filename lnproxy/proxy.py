@@ -67,6 +67,7 @@ class Proxy:
                         f"Unexpected write stream type in "
                         f"stream_to_memory_channel(): {type(write)}"
                     )
+                # Only increment the counter upon successful data read.
                 i += 1
 
     async def start(self):
