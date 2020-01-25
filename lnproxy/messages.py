@@ -150,17 +150,17 @@ class AddUpdateHTLC:
     def deserialize(self):
         """Decode an htlc_add_update message
         """
-        channel_id = struct.unpack(config.le_32b, self.payload[0:32])[0]
-        _id = struct.unpack(config.be_u64, self.payload[32:40])[0]
-        amount_msat = struct.unpack(config.be_u64, self.payload[40:48])[0]
-        payment_hash = struct.unpack(config.le_32b, self.payload[48:80])[0]
-        cltv_expiry = struct.unpack(config.be_u32, self.payload[80:84])[0]
+        self.channel_id = struct.unpack(config.le_32b, self.payload[0:32])[0]
+        self._id = struct.unpack(config.be_u64, self.payload[32:40])[0]
+        self.amount_msat = struct.unpack(config.be_u64, self.payload[40:48])[0]
+        self.payment_hash = struct.unpack(config.le_32b, self.payload[48:80])[0]
+        self.cltv_expiry = struct.unpack(config.be_u32, self.payload[80:84])[0]
 
-        logger.info(f"channel_id: {channel_id.hex()}")
-        logger.info(f"id: {_id}")
-        logger.info(f"amount_msat: {amount_msat}")
-        logger.info(f"payment_hash: {payment_hash.hex()}")
-        logger.info(f"cltv_expiry: {cltv_expiry}")
+        logger.info(f"channel_id: {self.channel_id.hex()}")
+        logger.info(f"id: {self._id}")
+        logger.info(f"amount_msat: {self.amount_msat}")
+        logger.info(f"payment_hash: {self.payment_hash.hex()}")
+        logger.info(f"cltv_expiry: {self.cltv_expiry}")
 
     def get_encrypted_msg(self):
         """Looks up and returns an encrypted message.
@@ -380,6 +380,7 @@ class LightningMessage:
             logger.info(
                 f"Message code not found in ln_msg.codes.keys(): {self.msg_code}"
             )
+            # TODO: this should close the connection immediately.
             return
 
         logger.info(
