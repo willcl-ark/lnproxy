@@ -1,24 +1,60 @@
 #!/usr/bin/env python3
 import logging
+import pathlib
 import time
 import uuid
-import pathlib
 
-import trio
 import lightning
+import trio
+from goTenna.constants import GID_MAX
+from secp256k1 import PublicKey
 
 import lnproxy.config as config
+import lnproxy.network as network
+import lnproxy.util as util
 from lnproxy.mesh_connection import connection_daemon
 from lnproxy.messages import EncryptedMessage
-import lnproxy.network as network
 from lnproxy.pk_from_hsm import get_privkey
 from lnproxy.proxy import serve_outbound
-import lnproxy.util as util
-
 
 gotenna_plugin = lightning.Plugin()
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("plugin")
+
+
+gotenna_plugin.add_option(
+    name="gid",
+    default=None,
+    description="A GID for connected goTenna device to use",
+    opt_type="int",
+)
+
+
+@gotenna_plugin.method("node-info")
+def node_info(plugin=None):
+    node_pubkey = plugin.rpc.getinfo()["id"]
+    node_gid = plugin.get_option("gid")
+    return {"node_pubkey": node_pubkey, "node_gid": node_gid}
+
+
+@gotenna_plugin.method("add-node")
+def add_node(gid, pubkey, plugin=None):
+    """Add a mesh-connected node to the routing table.
+    arg: gid: integer within valid goTenna GID range
+    arg: pubkey: a node's lightning pubkey
+    """
+    # Check that GID and pubkey are valid
+    assert 0 <= gid <= GID_MAX
+    # TODO: check pubkey is valid
+    # try:
+    #     _pubkey = PublicKey(pubkey=pubkey.encode("utf-8"), raw=True)
+    # except Exception:
+    #     logger.exception("Error with pubkey")
+
+    # Add to router
+    _node = network.Node(int(gid), str(pubkey))
+    network.router.add(_node)
+    return f"{_node} added to gotenna plugin router:\n{network.router}"
 
 
 @gotenna_plugin.method("proxy-connect")
@@ -107,7 +143,7 @@ def init(options, configuration, plugin):
     util.write_pubkey_to_file()
     # Hack to get other node pubkeys
     # TODO: fix this with new router implementation
-    util.read_pubkeys_from_files()
+    # util.read_pubkeys_from_files()
     # Suppress all gossip messages from C-Lightning node.
     plugin.rpc.dev_suppress_gossip()
     logger.info("goTenna plugin initialized")
@@ -124,8 +160,8 @@ async def main():
             # We run the plugin itself in a synchronous thread so trio.run() maintains
             # overall control of the app.
             config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
-            # # Start the goTenna connection daemon.
-            config.nursery.start_soon(connection_daemon)
+            # Start the goTenna connection daemon.
+            # config.nursery.start_soon(connection_daemon)
     except:
         logger.exception("whoops")
     finally:
