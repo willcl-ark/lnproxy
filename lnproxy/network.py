@@ -67,14 +67,14 @@ class Router:
         return item in self.by_gid or item in self.by_pubkey
 
     def __str__(self):
-        return f"Router with {self.__len__()} Nodes.\nNodes: {self.nodes}"
+        return f"Router with {self.__len__()} Nodes:\n{self.nodes}"
 
     def add(self, node: Node):
         """Add a node to the Router and make some handy lookup dicts.
         """
         self.nodes.append(node)
-        self.by_pubkey[node.pubkey] = node
-        self.by_gid[node.gid] = node
+        self.by_pubkey[str(node.pubkey)] = node
+        self.by_gid[int(node.gid)] = node
 
     def remove(self, gid: int):
         """Remove a node from the router by gid or pubkey.
@@ -91,8 +91,9 @@ class Router:
         """Returns pubkey of first GID matched in self.nodes.
         """
         try:
-            return self.by_gid[gid].pubkey
+            return self.by_gid[int(gid)].pubkey
         except LookupError:
+            print(self.by_gid)
             raise LookupError(f"GID {gid} not found in Router for lookup_pubkey.")
 
     def lookup_gid(self, pubkey: str):
