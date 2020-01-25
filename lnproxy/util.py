@@ -40,7 +40,7 @@ def unlink_socket(address: str):
     except OSError:
         # Only log an error if the path exists but we can't unlink it, else ignore
         if socket_path.exists():
-            logger.info(f"Couldn't unlink socket {address}")
+            logger.warning(f"Couldn't unlink socket {address}")
 
 
 def get_my_payment_hashes() -> list:
@@ -95,7 +95,7 @@ def get_short_chan_id(source: hex, dest: hex) -> bytes:
     block_height = int(block_height)
     tx_index = int(tx_index)
     output_index = int(output_index)
-    logger.info(f"Got short channel ID: {block_height}x{tx_index}x{output_index}")
+    logger.debug(f"Got short channel ID: {block_height}x{tx_index}x{output_index}")
 
     _id = bytearray()
     # 3 bytes for block height and tx_index
@@ -125,7 +125,7 @@ def hex_dump(data, length=16):
         printable = "".join(["%s" % ((x <= 127 and _filter[x]) or ".") for x in chars])
         lines.append("%04x  %-*s  %s\n" % (c, length * 3, _hex, printable))
     result = "\n" + "".join(lines)
-    logger.info(result)
+    logger.debug(result)
 
 
 async def receive_exactly(stream, length: int) -> bytes:

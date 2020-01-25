@@ -30,17 +30,17 @@ async def connection_daemon():
     i = 0
     while config.node_info is None:
         if i > 5:
-            logger.info("Waiting for node info in config.node_info")
+            logger.debug("Waiting for node info in config.node_info")
         await trio.sleep(0.1)
         i += 1
-    logger.info("Got node info, starting connection")
+    logger.debug("Got node info, starting connection")
     # start the mesh connection
     config.mesh_conn = Connection(is_plugin=True)
     # start the send_queue_daemon:
     while config.mesh_conn.active is False:
         await trio.sleep(0.1)
     config.nursery.start_soon(proxy.send_queue_daemon)
-    logger.info("Connection and send_queue_daemon started successfully")
+    logger.debug("Connection and send_queue_daemon started successfully")
 
 
 class Connection:
@@ -48,7 +48,7 @@ class Connection:
     """
 
     def __init__(self, is_plugin=False, gid=None, geo_region=None, sdk_token=None):
-        logger.info("Initialising goTenna Connection object")
+        logger.debug("Initialising goTenna Connection object")
         self.is_plugin = is_plugin
         self.active = False
         self.api_thread = None
@@ -75,7 +75,6 @@ class Connection:
                 self.sdk_token = config.sdk_token
                 self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
                 self.recv_msg_q = queue.Queue()
-                logger.debug("passed loop")
                 self.start_handlers()
             except:
                 logger.exception("Ouch")
@@ -92,7 +91,7 @@ class Connection:
         # start the queue handlers in the main nursery
         config.nursery.start_soon(self.send_handler)
         config.nursery.start_soon(self.recv_handler)
-        logger.info("goTenna Connection handlers started")
+        logger.debug("goTenna Connection handlers started")
 
     @staticmethod
     async def parse_recv_mesh_msg(msg: goTenna.message.Message):
@@ -110,7 +109,7 @@ class Connection:
             node = network.router.get_node(_from)
         except LookupError:
             logger.error(f"Node {_from} not found in router")
-            # Under normal operation we would want to create the new node here
+            # TODO: Create the new node here
             return
         if (node.outbound or node.inbound) is None:
             logger.debug("Queues not initialised... Initialising")
@@ -123,8 +122,7 @@ class Connection:
     async def lookup_and_send(self, msg):
         """Extract to_gid from message header and send the message over the mesh.
         """
-        # lookup the recipient GID
-        # TODO: we should send the messages as a tuple with GID here to avoid lookups
+        # Extract the GID from the header
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
         self.send_private(to_gid, msg[8:], binary=True)
@@ -132,7 +130,7 @@ class Connection:
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
         """
-        logger.info("Started send_handler")
+        logger.debug("Started send_handler")
         async for msg in self.send_mesh_recv:
             await self.lookup_and_send(msg)
 
@@ -140,7 +138,7 @@ class Connection:
         """Handles all messages received from the mesh.
         Put them in the right queue (memory_stream).
         """
-        logger.info("Started recv_handler")
+        logger.debug("Started recv_handler")
         while True:
             if not self.recv_msg_q.empty():
                 await self.parse_recv_mesh_msg(self.recv_msg_q.get())
@@ -195,7 +193,7 @@ class Connection:
             logger.error(
                 f"SDK token {sdk_token} is not valid. Please enter a valid SDK token.",
             )
-        logger.info(f"SDK_TOKEN: {self.api_thread.sdk_token.decode('utf-8')}")
+        logger.debug(f"SDK_TOKEN: {self.api_thread.sdk_token.decode('utf-8')}")
 
     def event_callback(self, evt):
         """ The event callback that will store even messages from the API.
@@ -236,7 +234,7 @@ class Connection:
                 # own
                 logger.info("Firmware update: Device disconnected, awaiting reconnect")
             else:
-                logger.info("Disconnected! {evt}")
+                logger.info(f"Disconnected! {evt}")
                 # We reset the configuration here so that if the user plugs in a
                 # different device it is not immediately reconfigured with new and
                 # incorrect data
@@ -336,7 +334,7 @@ class Connection:
             return
         self.api_thread.set_gid(_gid)
         self._settings.gid_settings = gid
-        logger.info(f"GID: {self.api_thread.gid.gid_val}")
+        logger.debug(f"GID: {self.api_thread.gid.gid_val}")
 
     def send_broadcast(self, message, binary=False):
         """ Send a broadcast message, if binary=True, message must be bytes
@@ -507,7 +505,7 @@ class Connection:
         self._set_geo_region = True
         self._settings.geo_settings.region = region
         self.api_thread.set_geo_settings(self._settings.geo_settings)
-        logger.info(f"GEO_REGION: {self.api_thread.geo_settings.region}")
+        logger.debug(f"GEO_REGION: {self.api_thread.geo_settings.region}")
 
     def can_connect(self):
         """ Return whether a goTenna can connect.

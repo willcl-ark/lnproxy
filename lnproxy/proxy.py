@@ -43,7 +43,7 @@ class Proxy:
         (the mesh "queue") or a trio.SocketStream.
         Should not be called directly, instead use start().
         """
-        logger.info(f"Starting proxy(), initiator={initiator}")
+        logger.debug(f"Starting proxy(), initiator={initiator}")
         i = 0
         # There are 3 handshake messages in a lightning node opening handshake act:
         # Initiator 50B >> Recipient 50B >> Initiator 66B
@@ -91,7 +91,7 @@ async def send_queue_daemon():
     header and puts messages in general mesh send queue.
     Should be run continuously in it's own thread/task.
     """
-    logger.info("Started send_queue_daemon")
+    logger.debug("Started send_queue_daemon")
     while True:
         # No connections yet
         if len(network.router) == 0:
@@ -129,7 +129,7 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     except:
         logger.exception("handle_inbound():")
     else:
-        logger.info("Connection made to local C-Lightning node")
+        logger.debug("Connection made to local C-Lightning node")
         # Report back to Trio that we've made the connection and are ready to receive
         task_status.started()
         # Next proxy between the queue and the node.
@@ -172,7 +172,7 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
-    logger.info(f"Listening for new outbound connection on {listen_addr}")
+    logger.debug(f"Listening for new outbound connection on {listen_addr}")
     # Report back to Trio that we've made the connection and are ready to receive
     task_status.started()
     # Start only a single handle_outbound for this connection.

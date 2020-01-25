@@ -21,7 +21,7 @@ nodes = [0, 1, 2]
 
 def get_privkey(ln_dir):
     hsm_secret = open(f"{ln_dir}/hsm_secret", "rb").read()
-    logger.info(f"hsm_secret: {hsm_secret}")
+    logger.debug(f"hsm_secret: {hsm_secret}")
 
     # To generate the node private key, apply hkdf to string b"nodeid"
     salt = bytes([0]) or b"\x00"

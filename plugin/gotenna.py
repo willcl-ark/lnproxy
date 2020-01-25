@@ -61,7 +61,7 @@ def add_node(gid, pubkey, plugin=None):
 def proxy_connect(gid, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
-    logging.info(f"proxy-connect to gid {gid} via goTenna mesh connection")
+    logging.debug(f"proxy-connect to gid {gid} via goTenna mesh connection")
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid1().hex}"
     # Setup the listening server for C-Lightning to connect through, started in the
@@ -95,7 +95,7 @@ def message(
     except TypeError:
         logger.exception("Invalid public key type for encryption")
     else:
-        logger.info(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
+        logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
     description = f"{uuid.uuid1().hex} encrypted message to {_message.dest_pubkey}"
@@ -103,11 +103,13 @@ def message(
     # Store message for later.
     # We will add the encrypted message onto the outbound htlc_add_update message
     config.key_sends[_message.payment_hash.digest()] = _message
-    logger.info(f"Stored message at config.key_sends[{_message.payment_hash.digest()}]")
+    logger.debug(
+        f"Stored message at config.key_sends[{_message.payment_hash.digest()}]"
+    )
 
     # Get next peer in route
     peer = config.rpc.listfunds()["channels"][0]["peer_id"]
-    logger.info(f"Got next peer {peer}")
+    logger.debug(f"Got next peer {peer}")
 
     # We will use 100 satoshis as base payment amount
     msatoshi = 100_000
@@ -129,8 +131,8 @@ def message(
 @gotenna_plugin.init()
 # Unused parameters used by lightning.plugin() internally
 def init(options, configuration, plugin):
-    logger.info("Starting plugin")
-    # Store the RPC in config to be accessible by all.
+    logger.info("Starting goTenna plugin")
+    # Store the RPC in config to be accessible by all modules.
     config.rpc = plugin.rpc
     # Get the local lightning node info.
     config.node_info = plugin.rpc.getinfo()
@@ -163,7 +165,7 @@ async def main():
             # Start the goTenna connection daemon.
             # config.nursery.start_soon(connection_daemon)
     except:
-        logger.exception("whoops")
+        logger.exception("Exception in main loop:")
     finally:
         logger.info("goTenna plugin finished.")
 
