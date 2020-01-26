@@ -143,6 +143,7 @@ async def receive_exactly(stream, length: int) -> bytes:
             pass
         except:
             logger.exception(f"receive_exactly():")
+            raise
     return res
 
 

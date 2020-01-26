@@ -46,6 +46,10 @@ codes = {
 }
 
 
+class UnknownMessage(Exception):
+    pass
+
+
 class EncryptedMessage:
     """A message sent via C-Lightning plugin RPC.
     """
@@ -313,6 +317,7 @@ class HandshakeMessage:
             message += await stream.receive_some(req_len)
         except:
             logger.exception("read_handshake")
+            raise
         return cls(message)
 
 
@@ -370,12 +375,9 @@ class LightningMessage:
         self.deserialise_body()
 
         # filter unknown codes and return without processing
-        if self.msg_code not in codes.keys():
-            logger.warning(
-                f"Message code not found in ln_msg.codes.keys(): {self.msg_code}"
-            )
-            # TODO: this should close the connection immediately.
-            return
+        if self.msg_code not in codes:
+            logger.warning(f"Message code not found in ln_msg.codes: {self.msg_code}")
+            raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
 
         logger.debug(
             f"{direction} | {codes.get(self.msg_code):<27s} | {len(self.msg_payload):>4d}B",

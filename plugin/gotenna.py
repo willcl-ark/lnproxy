@@ -106,6 +106,7 @@ def proxy_connect(gid, plugin=None):
         time.sleep(0.1)
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
+    # TODO: Use trio to add a timeout for the connect?
     return plugin.rpc.connect(str(pubkey), f"{listen_addr}")
 
 
