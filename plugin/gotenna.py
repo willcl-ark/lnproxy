@@ -91,6 +91,10 @@ def remove_node(gid, plugin=None):
 def proxy_connect(gid, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
+    try:
+        pubkey = network.router.lookup_pubkey(gid)
+    except LookupError as e:
+        return f"Could not find GID {gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {gid} via goTenna mesh connection")
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid1().hex}"
@@ -102,7 +106,6 @@ def proxy_connect(gid, plugin=None):
         time.sleep(0.1)
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
-    pubkey = network.router.lookup_pubkey(gid)
     return plugin.rpc.connect(str(pubkey), f"{listen_addr}")
 
 
