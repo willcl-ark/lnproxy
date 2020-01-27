@@ -46,19 +46,16 @@ Next we add our goTenna SDK token and ONION_TOOL path to the config file:
 
 Testing currently uses 4 terminal windows, these could also be screen/tmux sessions if you prefer.
 
-Let's export to the shell $PATH_TO_BITCOIN, which should point to the Bitcoin datadir for your OS and $PLUGIN_PATH:
+Lnproxy is run by C-Lightning as a plugin, and we need to tell C-Lightning how to find it. Let's export to the shell $PATH_TO_BITCOIN, which should point to the Bitcoin datadir for your OS and $PLUGIN_PATH which should point to lnproxy/plugin/gotenna.py file:
 
     # e.g. on OSX you might do
     export PATH_TO_BITCOIN="~/Library/Application\ Support/Bitcoin"
-    export PLUGIN_PATH="~/src/lnproxy2/plugin/gotenna.py"
+    export PLUGIN_PATH="~/src/lnproxy/plugin/gotenna.py"
     
-Lnproxy is run by C-Lightning as a plugin, and we need to tell C-Lightning how to find it. Change to the right directory and source the script:
+Change to the right directory and source the script:
 
     # wherever you cloned C-Lightning, e.g.
     cd ~/src/lightning
-    # Next we edit the plugin path for the lightning config files (3 times, once for each config file!)
-    vim contrib/startup_regtest.sh
-    # On L74, L86 & L96 edit the "plugin=..." to point to the plugin file.
     source contrib/startup_regtest.sh
 
 You will see printed a list of available commands for later reference. Of note you should remember that it is possible to shutdown all three nodes and bitcoind from a single command, `stop_ln` and cleanup everything with `cleanup_ln`.
