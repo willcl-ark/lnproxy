@@ -10,19 +10,20 @@ import lnproxy.util as util
 
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
+router = network.router
 
 
 class Proxy:
     """A proxy between a stream and a gid.
     """
 
-    def __init__(self, stream, gid: int, stream_init: bool, q_init: bool, router):
+    def __init__(self, stream, gid: int, stream_init: bool, q_init: bool):
         self.stream = stream
         self.gid = gid
         self.stream_init = stream_init
         self.q_init = q_init
-        self.router = network.router
-        self.node = network.router.get_node(gid)
+        self.router = router
+        self.node = router.get_node(gid)
 
     @staticmethod
     async def read_message(

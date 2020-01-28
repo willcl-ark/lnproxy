@@ -12,6 +12,7 @@ import lnproxy.util as util
 
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
+router = network.router
 
 
 codes = {
@@ -86,7 +87,7 @@ class EncryptedMessage:
 
     def encrypt(self):
         # First lookup the pubkey from the GID
-        self.dest_pubkey = network.router.lookup_pubkey(self.gid)
+        self.dest_pubkey = router.lookup_pubkey(self.gid)
         # Generate the preimage and payment hash
         self.preimage = hashlib.sha256(self.plain_text.encode("utf-8"))
         self.payment_hash = hashlib.sha256(self.preimage.digest())
@@ -221,7 +222,10 @@ class AddUpdateHTLC:
             preimage=derived_preimage.hex(),
         )
 
-        logger.info(f"Received encrypted message for us!\n" f"{decrypted_msg.decode()}")
+        logger.info(
+            f"Received encrypted message for us!\n"
+            f"Decrypted message: {decrypted_msg.decode()}"
+        )
         # Remove the encrypted message
         self.payload = self.payload[0:84]
         # Process the htlc as we normally would
@@ -233,7 +237,7 @@ class AddUpdateHTLC:
         logger.debug(f"Encoded message length: {enc_msg_len}")
         # Get the message itself
         enc_msg = EncryptedMessage(encrypted_msg=self.payload[86 : 86 + enc_msg_len],)
-        # enc_msg.nonce = network.router.get_node(gid).nonce.to_bytes(16, "big")
+        # enc_msg.nonce = router.get_node(gid).nonce.to_bytes(16, "big")
         logger.debug(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 
         # Now we check if the message is "for us" (can we decrypt the message)
@@ -313,6 +317,7 @@ class HandshakeMessage:
             message += await stream.receive_some(req_len)
         except:
             logger.exception("read_handshake")
+            raise
         return cls(message)
 
 
@@ -336,6 +341,7 @@ class LightningMessage:
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
         header = await util.receive_exactly(stream, config.MSG_HEADER)
+        # logger.debug(f"read received header:\n{util.hex_dump(header)}")
 
         # Bolt #8: 2-byte message length
         body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]
@@ -346,15 +352,20 @@ class LightningMessage:
 
         # Bolt #8: Lightning message
         body = await util.receive_exactly(stream, body_len)
+        # logger.debug(f"read received body:\n{util.hex_dump(body)}")
 
         # Bolt #8: 16 Byte MAC of the Lightning message
         body_mac = await util.receive_exactly(stream, config.MSG_MAC)
         # TODO: we can add a fake MAC on here during full mesh operation saving 16 bytes
         # body_mac = 16 * (bytes.fromhex("00"))
 
+        # logger.debug(
+        #     f"Read message {'from local' if to_mesh else 'from remote'}:\n"
+        #     f"{util.hex_dump(header + body + body_mac)}"
+        # )
         return cls(header, body_len, body_len_mac, body, body_mac, to_mesh)
 
-    def deserialise_body(self):
+    def deserialize_body(self):
         self.msg_type = self.body[0:2]
         self.msg_payload = self.body[2:]
         self.msg_code = deserialize_type(self.msg_type)
@@ -367,15 +378,12 @@ class LightningMessage:
         if self.body == b"":
             return
 
-        self.deserialise_body()
+        self.deserialize_body()
 
         # filter unknown codes and return without processing
-        if self.msg_code not in codes.keys():
-            logger.warning(
-                f"Message code not found in ln_msg.codes.keys(): {self.msg_code}"
-            )
-            # TODO: this should close the connection immediately.
-            return
+        if self.msg_code not in codes:
+            logger.warning(f"Message code not found in ln_msg.codes: {self.msg_code}")
+            # raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
 
         logger.debug(
             f"{direction} | {codes.get(self.msg_code):<27s} | {len(self.msg_payload):>4d}B",

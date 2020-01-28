@@ -33,13 +33,12 @@ nursery = None
 node_info = None
 node_secret_key = None
 key_sends = {}
-# handle_inbounds is a list of pubkey[:4] for each node_pubkey we have a handle_inbound
-# running for
 
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
 sdk_token = priv.sdk_token
+geo_region = 2
 UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute

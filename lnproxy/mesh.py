@@ -20,6 +20,7 @@ SPI_READY = 27
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
 gotenna_logger.setLevel(level=logging.WARNING)
+router = network.router
 
 
 async def connection_daemon():
@@ -67,11 +68,11 @@ class Connection:
 
         if self.is_plugin:
             # Wait for node info to populate from main thread
-            while not config.node_info and len(network.router) < 3:
+            while not config.node_info and len(router) < 3:
                 time.sleep(1)
             try:
-                self.gid = network.router.lookup_gid(config.node_info["id"])
-                self.geo_region = 2
+                self.gid = router.lookup_gid(config.node_info["id"])
+                self.geo_region = config.geo_region
                 self.sdk_token = config.sdk_token
                 self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
                 self.recv_msg_q = queue.Queue()
@@ -106,7 +107,7 @@ class Connection:
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
         try:
-            node = network.router.get_node(_from)
+            node = router.get_node(_from)
         except LookupError:
             logger.error(f"Node {_from} not found in router")
             # TODO: Create the new node here

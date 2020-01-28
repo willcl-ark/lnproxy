@@ -4,6 +4,7 @@ import logging
 import pathlib
 import struct
 import time
+from typing import Union
 
 import trio
 
@@ -112,7 +113,7 @@ def check_onion_tool() -> bool:
 
 
 def hex_dump(data, length=16):
-    """Print a hex dump of data
+    """Create a hex dump of data
     """
     _filter = "".join([(len(repr(chr(x))) == 3) and chr(x) or "." for x in range(256)])
     lines = []
@@ -123,10 +124,12 @@ def hex_dump(data, length=16):
         printable = "".join(["%s" % ((x <= 127 and _filter[x]) or ".") for x in chars])
         lines.append("%04x  %-*s  %s\n" % (c, length * 3, _hex, printable))
     result = "\n" + "".join(lines)
-    logger.debug(result)
+    return result
 
 
-async def receive_exactly(stream, length: int) -> bytes:
+async def receive_exactly(
+    stream: Union[trio.SocketStream, trio.testing.MemoryReceiveStream], length: int
+) -> bytes:
     """Receive an exact number of bytes from a trio.SocketStream or a
     trio.testing.MemoryReceiveStream.
     """
@@ -137,12 +140,7 @@ async def receive_exactly(stream, length: int) -> bytes:
         )
     res = bytearray()
     while len(res) < length:
-        try:
-            res += await stream.receive_some(length - len(res))
-        except trio.Cancelled:
-            pass
-        except:
-            logger.exception(f"receive_exactly():")
+        res += await stream.receive_some(length - len(res))
     return res
 
 
@@ -171,7 +169,7 @@ def rate_dec():
                 per_min = 15
             else:
                 per_min = 5
-            min_interval = 1
+            min_interval = 2
             now = time.time()
             # add this send time to the list
             config.SEND_TIMES.append(now)
