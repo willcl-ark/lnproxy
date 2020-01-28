@@ -1,5 +1,6 @@
 import contextvars
 import functools
+import hashlib
 import logging
 import pathlib
 import struct
@@ -127,6 +128,10 @@ def hex_dump(data, length=16):
     return result
 
 
+def msg_hash(msg):
+    return hashlib.sha256(msg).hexdigest()
+
+
 async def receive_exactly(
     stream: Union[trio.SocketStream, trio.testing.MemoryReceiveStream], length: int
 ) -> bytes:
@@ -146,7 +151,7 @@ async def receive_exactly(
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
     """Adds data of arbitrary length to a queue in a certain chunk size and yields
-    result as an iterator.
+    tsresult as an iterator.
     """
     for i in range(0, len(data), chunk_len):
         yield (prefix + data[i : i + chunk_len])
@@ -169,7 +174,7 @@ def rate_dec():
                 per_min = 15
             else:
                 per_min = 5
-            min_interval = 2
+            min_interval = 1
             now = time.time()
             # add this send time to the list
             config.SEND_TIMES.append(now)

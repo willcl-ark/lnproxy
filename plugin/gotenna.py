@@ -161,9 +161,13 @@ def message(
     ]
     logger.info(f"Got route to {peer}, executing sendpay command.")
 
-    return config.rpc.sendpay(
+    result = config.rpc.sendpay(
         route, _message.payment_hash.hexdigest(), description, amt_msat
     )
+    return {
+        "sendpay_result": result,
+        "monitor_command": f"waitsendpay {_message.payment_hash.hexdigest()}",
+    }
 
 
 @gotenna_plugin.init()
@@ -200,18 +204,13 @@ async def main():
     which must be at startup.
     """
     # This nursery will run our main tasks for us:
-    try:
-        async with trio.open_nursery() as config.nursery:
-            # We run the plugin itself in a synchronous thread so trio.run() maintains
-            # overall control of the app.
-            config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
-            # Start the goTenna connection daemon.
-            config.nursery.start_soon(connection_daemon)
-    except:
-        logger.exception("Exception in main loop:")
-        raise
-    finally:
-        logger.info("goTenna plugin exited.")
+    async with trio.open_nursery() as config.nursery:
+        # We run the plugin itself in a synchronous thread so trio.run() maintains
+        # overall control of the app.
+        config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
+        # Start the goTenna connection daemon.
+        config.nursery.start_soon(connection_daemon)
+    logger.info("goTenna plugin exited.")
 
 
 trio.run(main)

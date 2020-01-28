@@ -33,11 +33,11 @@ class Proxy:
         """
         if i < hs_acts:
             message = await msg.HandshakeMessage.read(stream, i, initiator)
-            return message.message
+            return bytes(message.message)
         else:
             message = await msg.LightningMessage.read(stream, to_mesh)
             await message.parse()
-            return message.header + message.body + message.body_mac
+            return bytes(message.header + message.body + message.body_mac)
 
     async def _run_proxy(self, read, write, initiator: bool, to_mesh: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
@@ -64,14 +64,13 @@ class Proxy:
             )
         # Main proxy loop
         while True:
-            with trio.move_on_after(300):
-                message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-                await send(message)
-                i += 1
+            message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
+            await send(message)
+            i += 1
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
-        # Set a session key as a contextvar for this proxy session
+        # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.gid)
         async with trio.open_nursery() as nursery:
             nursery.start_soon(
@@ -84,33 +83,7 @@ class Proxy:
             nursery.start_soon(
                 self._run_proxy, self.node.inbound[1], self.stream, self.q_init, False,
             )
-
-
-async def send_queue_daemon():
-    """Monitors all send queues in the router, splits messages to 200B length, appends
-    header and puts messages in general mesh send queue.
-    Should be run continuously in it's own thread/task.
-    """
-    logger.debug("Started send_queue_daemon")
-    while True:
-        # No connections yet
-        if len(network.router) == 0:
-            await trio.sleep(0.1)
-        else:
-            for node in network.router.nodes:
-                if node.outbound is not None:
-                    try:
-                        msg = node.outbound[1].receive_nowait()
-                    except trio.WouldBlock:
-                        await trio.sleep(0.1)
-                    else:
-                        # Split it into 200B chunks and add header
-                        msg_iter = util.chunk_to_list(msg, 200, node.header)
-                        # Add it to send_mesh memory_channel
-                        for message in msg_iter:
-                            await config.mesh_conn.send_mesh_send.send(message)
-                else:
-                    await trio.sleep(1)
+        logger.debug(f"Proxy for GID {self.gid} exited")
 
 
 async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -131,9 +104,9 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(proxy.start)
-    except:
-        logger.exception("Error in handle_inbound")
-        raise
+    except Exception:
+        logger.exception(f"handle_inbound for GID {gid} encountered an exception")
+        return
     # cleanup after connection closed
     finally:
         router.cleanup(gid)
@@ -161,14 +134,14 @@ async def handle_outbound(stream: trio.SocketStream, gid: int):
     try:
         async with trio.open_nursery() as nursery:
             nursery.start_soon(proxy.start)
-    except:
-        logger.exception("Error in handle_outbound")
-        raise
+    except Exception:
+        logger.exception(f"handle_outbound for GID {gid} encountered an exception")
+        return
     finally:
         router.cleanup(gid)
         with trio.fail_after(2):
             await stream.aclose()
-        logger.debug(f"handle_inbound for GID {gid} finished.")
+        logger.debug(f"handle_outbound for GID {gid} finished.")
 
 
 async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGNORED):

@@ -47,6 +47,12 @@ codes = {
 }
 
 
+class UnknownMessage(Exception):
+    """An Exception class to raise if we get an unknown message type.
+    Usually requires that the entire connection be reset.
+    """
+
+
 class EncryptedMessage:
     """A message sent via C-Lightning plugin RPC.
     """
@@ -107,13 +113,9 @@ class EncryptedMessage:
     def decrypt(self, payment_hash: bytes):
         # Set the nonce to the first 16 bytes of the payment_hash
         self.nonce = payment_hash[:16]
-        try:
-            self.decrypted_msg = crypto.decrypt(
-                config.node_secret_key, bytes(self.encrypted_msg), self.nonce
-            )
-        except:
-            logger.exception("Error during decryption")
-            raise
+        self.decrypted_msg = crypto.decrypt(
+            config.node_secret_key, bytes(self.encrypted_msg), self.nonce
+        )
         self.preimage = hashlib.sha256(self.decrypted_msg).digest()
         self.payment_hash = hashlib.sha256(self.preimage).digest()
         return self.preimage, self.payment_hash, self.decrypted_msg
@@ -246,7 +248,7 @@ class AddUpdateHTLC:
                 self.payment_hash
             )
         # Decode failed, this is not for us
-        except:
+        except Exception:
             logger.error(f"Could not decrypt encrypted message")
             # The encrypted message wasn't for us. We should store it so we can
             # re-attach on the way back out...
@@ -312,27 +314,23 @@ class HandshakeMessage:
         # pass full 50 / 66 B messages transparently
         req_len = hs_pkt_size[initiator][i]
         message = bytearray()
-        # message += await util.receive_exactly(stream, req_len)
-        try:
-            message += await stream.receive_some(req_len)
-        except:
-            logger.exception("read_handshake")
-            raise
+        message += await util.receive_exactly(stream, req_len)
+        # message += await stream.receive_some(req_len)
         return cls(message)
 
 
 class LightningMessage:
     def __init__(self, header, body_len, body_len_mac, body, body_mac, to_mesh):
-        self.header = header
-        self.body_len = body_len
-        self.body_len_mac = body_len_mac
-        self.body = body
-        self.body_mac = body_mac
+        self.header = bytes(header)
+        self.body_len = bytes(body_len)
+        self.body_len_mac = bytes(body_len_mac)
+        self.body = bytes(body)
+        self.body_mac = bytes(body_mac)
         self.to_mesh = to_mesh
         self.msg_type = None
         self.msg_payload = None
         self.msg_code = None
-        # Grab the GID from the handy contextvar
+        # Grab the GID from the contextvar
         self.gid = util.gid_key.get()
 
     @classmethod
@@ -340,7 +338,7 @@ class LightningMessage:
         """Reads a full lightning message from a stream.
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
-        header = await util.receive_exactly(stream, config.MSG_HEADER)
+        header = await stream.receive_some(config.MSG_HEADER)
         # logger.debug(f"read received header:\n{util.hex_dump(header)}")
 
         # Bolt #8: 2-byte message length
@@ -351,18 +349,17 @@ class LightningMessage:
         # body_len_mac = 16 * (bytes.fromhex("00"))
 
         # Bolt #8: Lightning message
-        body = await util.receive_exactly(stream, body_len)
+        body = bytearray()
+        while len(body) < body_len:
+            body += await stream.receive_some(body_len - len(body))
+        # body = await util.receive_exactly(stream, body_len)
         # logger.debug(f"read received body:\n{util.hex_dump(body)}")
 
         # Bolt #8: 16 Byte MAC of the Lightning message
-        body_mac = await util.receive_exactly(stream, config.MSG_MAC)
-        # TODO: we can add a fake MAC on here during full mesh operation saving 16 bytes
+        body_mac = await stream.receive_some(config.MSG_MAC)
+        # TODO: we can add a fake MAC on here saving 16 bytes
         # body_mac = 16 * (bytes.fromhex("00"))
 
-        # logger.debug(
-        #     f"Read message {'from local' if to_mesh else 'from remote'}:\n"
-        #     f"{util.hex_dump(header + body + body_mac)}"
-        # )
         return cls(header, body_len, body_len_mac, body, body_mac, to_mesh)
 
     def deserialize_body(self):
@@ -383,7 +380,7 @@ class LightningMessage:
         # filter unknown codes and return without processing
         if self.msg_code not in codes:
             logger.warning(f"Message code not found in ln_msg.codes: {self.msg_code}")
-            # raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
+            raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
 
         logger.debug(
             f"{direction} | {codes.get(self.msg_code):<27s} | {len(self.msg_payload):>4d}B",

@@ -89,18 +89,12 @@ class Router:
     def lookup_gid(self, pubkey: str):
         """Returns GID of first pubkey matched in self.nodes.
         """
-        try:
-            return self.by_pubkey[pubkey].gid
-        except LookupError:
-            raise LookupError(f"Pubkey {pubkey} not found in Router for lookup_gid.")
+        return self.by_pubkey[pubkey].gid
 
     def get_node(self, gid):
         """Returns the first node found in the router with matching GID.
         """
         return self.by_gid[gid]
-
-    def get_nonce(self, gid):
-        return self.by_gid[gid].nonce
 
     def init_node(self, gid):
         self.by_gid[gid].init_queues()
