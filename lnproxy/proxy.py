@@ -45,30 +45,28 @@ class Proxy:
         Should not be called directly, instead use start().
         """
         logger.debug(f"Starting proxy(), initiator={initiator}")
-        i = 0
         # There are 3 handshake messages in a lightning node opening handshake act:
         # Initiator 50B >> Recipient 50B >> Initiator 66B
         # Here we set a counter so that we know whether to expect to process a handshake
         # or lightning message.
+        i = 0
         hs_acts = 2 if initiator else 1
+        # Set 'send' as appropriate for the stream type passed in. If we are sending to
+        # C-Lightning, this will be a SocketStream. If we are sending to the mesh, this
+        # will be a MemorySendChannel.
+        if type(write) == trio.MemorySendChannel:
+            send = write.send
+        elif type(write) == trio.SocketStream:
+            send = write.send_all
+        else:
+            raise TypeError(
+                f"Incompatible write stream passed to _run_proxy: {type(write)}"
+            )
+        # Main proxy loop
         while True:
-            try:
+            with trio.move_on_after(300):
                 message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-            except (trio.BusyResourceError, trio.Cancelled):
-                pass
-            except:
-                logger.exception(f"proxy():")
-            else:
-                if type(write) == trio.MemorySendChannel:
-                    await write.send(message)
-                elif type(write) == trio.SocketStream:
-                    await write.send_all(message)
-                else:
-                    logger.warning(
-                        f"Unexpected write stream type in "
-                        f"stream_to_memory_channel(): {type(write)}"
-                    )
-                # Only increment the counter upon successful data read.
+                await send(message)
                 i += 1
 
     async def start(self):
@@ -105,8 +103,6 @@ async def send_queue_daemon():
                         msg = node.outbound[1].receive_nowait()
                     except trio.WouldBlock:
                         await trio.sleep(0.1)
-                    except:
-                        logger.exception("send_queue_daemon:")
                     else:
                         # Split it into 200B chunks and add header
                         msg_iter = util.chunk_to_list(msg, 200, node.header)
@@ -123,25 +119,27 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     """
     logger.info(f"Handling new incoming connection from GID: {gid}")
     # TODO: is this accounted for?
-    # # Add it to the list of handle_inbounds running
-    # config.handle_inbounds.append(gid)
+    # Add it to the list of handle_inbounds running
     # First connect to our local C-Lightning node.
+    stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+    logger.debug("Connection made to local C-Lightning node")
+    # Report back to Trio that we've made the connection and are ready to receive
+    task_status.started()
+    # Next proxy between the queue and the node.
+    # q_init is True because remote is handshake initiator.
+    proxy = Proxy(stream, gid, False, True)
     try:
-        stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(proxy.start)
     except:
-        logger.exception("handle_inbound():")
-    else:
-        logger.debug("Connection made to local C-Lightning node")
-        # Report back to Trio that we've made the connection and are ready to receive
-        task_status.started()
-        # Next proxy between the queue and the node.
-        # q_init is True because remote is handshake initiator.
-        proxy = Proxy(stream, gid, False, True, network.router)
-        await proxy.start()
+        logger.exception("Error in handle_inbound")
+        raise
     # cleanup after connection closed
     finally:
-        # TODO cleanup config.nodes[gid][inbound / outbound] queues
-        pass
+        router.cleanup(gid)
+        with trio.fail_after(2):
+            await stream.aclose()
+        logger.debug(f"handle_inbound for GID {gid} finished.")
 
 
 async def handle_outbound(stream: trio.SocketStream, gid: int):
@@ -149,19 +147,28 @@ async def handle_outbound(stream: trio.SocketStream, gid: int):
     and then proxying the connection with the mesh queue.
     """
     logger.info(f"Handling new outbound connection to GID: {gid}")
-    # # First we check if the node is in the router already:
-    # if gid not in network.router:
-    #     network.router.add(Node(gid=gid, pubkey=pubkey))
+    # First we check if the node is in the router already:
+    if gid not in router:
+        logger.error(
+            f"GID {gid} not found in network router, aborting. Please add Node"
+            f"to router before trying to reconnect"
+        )
+        return
+    # Next proxy between the stream and the node.
+    # stream_init is True because we are handshake initiator.
+    router.init_node(gid)
+    proxy = Proxy(stream, gid, True, False)
     try:
-        # Next we initialise the Node's queues
-        network.router.init_node(gid)
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(proxy.start)
     except:
-        logger.exception("network.router.init_node():")
-    else:
-        # Next proxy between the stream and the node.
-        # stream_init is True because we are handshake initiator.
-        proxy = Proxy(stream, gid, True, False, network.router)
-        await proxy.start()
+        logger.exception("Error in handle_outbound")
+        raise
+    finally:
+        router.cleanup(gid)
+        with trio.fail_after(2):
+            await stream.aclose()
+        logger.debug(f"handle_inbound for GID {gid} finished.")
 
 
 async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -185,3 +192,4 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
             nursery,
             functools.partial(handle_outbound, gid=gid),
         )
+    logger.debug(f"serve_outbound for GID {gid} finished.")
