@@ -10,19 +10,20 @@ import lnproxy.util as util
 
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
+router = network.router
 
 
 class Proxy:
     """A proxy between a stream and a gid.
     """
 
-    def __init__(self, stream, gid: int, stream_init: bool, q_init: bool, router):
+    def __init__(self, stream, gid: int, stream_init: bool, q_init: bool):
         self.stream = stream
         self.gid = gid
         self.stream_init = stream_init
         self.q_init = q_init
-        self.router = network.router
-        self.node = network.router.get_node(gid)
+        self.router = router
+        self.node = router.get_node(gid)
 
     @staticmethod
     async def read_message(
@@ -32,20 +33,12 @@ class Proxy:
         """
         if i < hs_acts:
             message = await msg.HandshakeMessage.read(stream, i, initiator)
-            return message.message
+            return bytes(message.message)
         else:
-            try:
-                message = await msg.LightningMessage.read(stream, to_mesh)
-                await message.parse()
-            # We want to raise all exceptions here, as unknown messages or other issues
-            # mean we need to restart the proxy to re-sync
-            except msg.UnknownMessage:
-                logger.debug("read_message raising UnknownMessage Exception")
-                raise
-            except:
-                raise
-            else:
-                return message.header + message.body + message.body_mac
+            message = await msg.LightningMessage.read(stream, to_mesh)
+            if await message.parse():
+                return bytes(message.header + message.body + message.body_mac)
+            return b""
 
     async def _run_proxy(self, read, write, initiator: bool, to_mesh: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
@@ -53,43 +46,39 @@ class Proxy:
         Should not be called directly, instead use start().
         """
         logger.debug(f"Starting proxy(), initiator={initiator}")
-        i = 0
         # There are 3 handshake messages in a lightning node opening handshake act:
         # Initiator 50B >> Recipient 50B >> Initiator 66B
         # Here we set a counter so that we know whether to expect to process a handshake
         # or lightning message.
+        i = 0
         hs_acts = 2 if initiator else 1
+        # Set 'send' as appropriate for the stream type passed in. If we are sending to
+        # C-Lightning, this will be a SocketStream. If we are sending to the mesh, this
+        # will be a MemorySendChannel.
+        if type(write) == trio.MemorySendChannel:
+            send = write.send
+        elif type(write) == trio.SocketStream:
+            send = write.send_all
+        else:
+            raise TypeError(
+                f"Incompatible write stream passed to _run_proxy: {type(write)}"
+            )
+        # Main proxy loop
         while True:
             try:
                 message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-            # trio sometimes raises these, they are OK
-            except trio.BusyResourceError:
-                pass
-            # Our custom error to show we got a message we don't understand
-            except msg.UnknownMessage:
-                logger.debug("_run_proxy raising UnknownMessage Exception")
-                raise
-            # This has been cancelled by trio
-            except trio.Cancelled:
-                logger.exception(f"Read message cancelled by trio")
-                raise
-            # If all is well, pass the message on
-            else:
-                if type(write) == trio.MemorySendChannel:
-                    await write.send(message)
-                elif type(write) == trio.SocketStream:
-                    await write.send_all(message)
-                else:
-                    logger.warning(
-                        f"Unexpected write stream type in "
-                        f"stream_to_memory_channel(): {type(write)}"
-                    )
-                # Only increment the counter upon successful data read.
+                if message:
+                    await send(message)
                 i += 1
+            except trio.Cancelled:
+                pass
+            except Exception:
+                logger.exception("exception in proxy loop")
+                raise
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
-        # Set a session key as a contextvar for this proxy session
+        # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.gid)
         async with trio.open_nursery() as nursery:
             nursery.start_soon(
@@ -102,40 +91,7 @@ class Proxy:
             nursery.start_soon(
                 self._run_proxy, self.node.inbound[1], self.stream, self.q_init, False,
             )
-        logger.debug(
-            f"Proxy.start finished: Cancelled: {nursery.cancel_scope.cancelled_caught}"
-        )
-
-
-async def send_queue_daemon():
-    """Monitors all send queues in the router, splits messages to 200B length, appends
-    header and puts messages in general mesh send queue.
-    Should be run continuously in it's own thread/task.
-    """
-    logger.debug("Started send_queue_daemon")
-    while True:
-        # No connections yet
-        if len(network.router) == 0:
-            await trio.sleep(0.1)
-        else:
-            for node in network.router.nodes:
-                if node.outbound is not None:
-                    try:
-                        msg = node.outbound[1].receive_nowait()
-                    except trio.WouldBlock:
-                        await trio.sleep(0.1)
-                    except:
-                        logger.exception("send_queue_daemon:")
-                        # We try to continue here as daemon handles all connections so
-                        # don't raise
-                    else:
-                        # Split it into 200B chunks and add header
-                        msg_iter = util.chunk_to_list(msg, 200, node.header)
-                        # Add it to send_mesh memory_channel
-                        for message in msg_iter:
-                            await config.mesh_conn.send_mesh_send.send(message)
-                else:
-                    await trio.sleep(1)
+        logger.debug(f"Proxy for GID {self.gid} exited")
 
 
 async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -144,37 +100,26 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     """
     logger.info(f"Handling new incoming connection from GID: {gid}")
     # TODO: is this accounted for?
-    # # Add it to the list of handle_inbounds running
-    # config.handle_inbounds.append(gid)
+    # Add it to the list of handle_inbounds running
     # First connect to our local C-Lightning node.
-    stream = None
-    sock = config.node_info["binding"][0]["socket"]
+    stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+    logger.debug("Connection made to local C-Lightning node")
+    # Report back to Trio that we've made the connection and are ready to receive
+    task_status.started()
+    # Next proxy between the queue and the node.
+    # q_init is True because remote is handshake initiator.
+    proxy = Proxy(stream, gid, False, True)
     try:
-        stream = await trio.open_unix_socket(sock)
-    except (RuntimeError, OSError):
-        logger.exception(f"Error opening unix socket: {sock}")
-    except:
-        logger.debug("Unhandled exception opening socket")
-    else:
-        logger.debug("Connection made to local C-Lightning node")
-        # Report back to Trio that we've made the connection and are ready to receive
-        task_status.started()
-        # Next proxy between the queue and the node.
-        # q_init is True because remote is handshake initiator.
-        proxy = Proxy(stream, gid, False, True, network.router)
-        try:
-            await proxy.start()
-        except:
-            logger.exception("Error in handle_inbound")
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(proxy.start)
+    except Exception:
+        logger.exception(f"handle_inbound for GID {gid} encountered an exception")
+        raise
+    # cleanup after connection closed
     finally:
-        # TODO: remove queues from node?
-        if stream:
-            try:
-                await stream.send_eof()
-                await stream.aclose()
-            except:
-                logger.exception("handle_inbound cleanup")
-            logger.debug(f"handle_inbound stream for GID {gid} closed")
+        router.cleanup(gid)
+        with trio.fail_after(2):
+            await stream.aclose()
         logger.debug(f"handle_inbound for GID {gid} finished.")
 
 
@@ -184,33 +129,26 @@ async def handle_outbound(stream: trio.SocketStream, gid: int):
     """
     logger.info(f"Handling new outbound connection to GID: {gid}")
     # First we check if the node is in the router already:
-    if gid not in network.router:
+    if gid not in router:
         logger.error(
             f"GID {gid} not found in network router, aborting. Please add Node"
             f"to router before trying to reconnect"
         )
         return
+    # Next proxy between the stream and the node.
+    # stream_init is True because we are handshake initiator.
+    router.init_node(gid)
+    proxy = Proxy(stream, gid, True, False)
     try:
-        # Next we initialise the Node's queues
-        network.router.init_node(gid)
-    except:
-        logger.exception("network.router.init_node():")
-    else:
-        # Next proxy between the stream and the node.
-        # stream_init is True because we are handshake initiator.
-        proxy = Proxy(stream, gid, True, False, network.router)
-        try:
-            await proxy.start()
-        except:
-            logger.exception("Error in handle_outbound")
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(proxy.start)
+    except Exception:
+        logger.exception(f"handle_outbound for GID {gid} encountered an exception")
+        raise
     finally:
-        if stream:
-            try:
-                await stream.send_eof()
-                await stream.aclose()
-            except:
-                logger.exception("handle_outbound cleanup")
-            logger.debug(f"handle_outbound stream for GID {gid} closed")
+        router.cleanup(gid)
+        with trio.fail_after(2):
+            await stream.aclose()
         logger.debug(f"handle_outbound for GID {gid} finished.")
 
 

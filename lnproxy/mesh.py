@@ -19,12 +19,44 @@ SPI_READY = 27
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
-gotenna_logger.setLevel(level=logging.WARNING)
+gotenna_logger.setLevel(level=logging.DEBUG)
+goTenna_device_l1ll111111_opy_logger = logging.getLogger(
+    "goTenna.device.l1ll111111_opy_"
+)
+goTenna_device_l1ll111111_opy_logger.setLevel(level=logging.WARNING)
+router = network.router
+
+
+async def send_queue_daemon(send):
+    """Monitors all send queues in the router, splits messages to 200B length, appends
+    header and puts messages in general mesh send queue.
+    Should be run continuously in it's own thread/task.
+    """
+    logger.debug("Started send_queue_daemon")
+    while True:
+        # No connections yet
+        if len(network.router) == 0:
+            await trio.sleep(0)
+        else:
+            for node in network.router.nodes:
+                if node.outbound is not None:
+                    try:
+                        _msg = node.outbound[1].receive_nowait()
+                    except trio.WouldBlock:
+                        await trio.sleep(0)
+                    else:
+                        # Split it into 200B chunks and add header
+                        msg_iter = util.chunk_to_list(_msg, 200, node.header)
+                        # Add it to send_mesh memory_channel
+                        for message in msg_iter:
+                            await send.send(message)
+                else:
+                    await trio.sleep(0)
 
 
 async def connection_daemon():
     """Load the goTenna mesh connection object (to persistent config.mesh_conn).
-    Start the send_queue_daemon in the main nursery.
+    Start the send_queue_daemon in its own nursery.
     """
     # Wait for node info to populate.
     i = 0
@@ -35,19 +67,22 @@ async def connection_daemon():
         i += 1
     logger.debug("Got node info, starting connection")
     # start the mesh connection
-    config.mesh_conn = Connection(is_plugin=True)
-    # start the send_queue_daemon:
-    while config.mesh_conn.active is False:
-        await trio.sleep(0.1)
-    config.nursery.start_soon(proxy.send_queue_daemon)
-    logger.debug("Connection and send_queue_daemon started successfully")
+    async with trio.open_nursery() as nursery:
+        config.mesh_conn = Connection(is_plugin=True, nursery=nursery)
+        # start the send_queue_daemon:
+        while config.mesh_conn.active is False:
+            await trio.sleep(0.1)
+        nursery.start_soon(send_queue_daemon, config.mesh_conn.send_mesh_send.clone())
+        logger.debug("Connection and send_queue_daemon started successfully")
 
 
 class Connection:
     """goTenna connection class
     """
 
-    def __init__(self, is_plugin=False, gid=None, geo_region=None, sdk_token=None):
+    def __init__(
+        self, is_plugin=False, gid=None, geo_region=None, sdk_token=None, nursery=None
+    ):
         logger.debug("Initialising goTenna Connection object")
         self.is_plugin = is_plugin
         self.active = False
@@ -67,17 +102,16 @@ class Connection:
 
         if self.is_plugin:
             # Wait for node info to populate from main thread
-            while not config.node_info and len(network.router) < 3:
+            logger.debug("goTenna in C-Lightning plugin mode")
+            while not config.node_info and len(router) < 3:
                 time.sleep(1)
-            try:
-                self.gid = network.router.lookup_gid(config.node_info["id"])
-                self.geo_region = 2
-                self.sdk_token = config.sdk_token
-                self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
-                self.recv_msg_q = queue.Queue()
-                self.start_handlers()
-            except:
-                logger.exception("Ouch")
+            self.gid = router.lookup_gid(config.node_info["id"])
+            self.nursery = nursery
+            self.geo_region = config.geo_region
+            self.sdk_token = config.sdk_token
+            self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
+            self.recv_msg_q = queue.Queue()
+            self.nursery.start_soon(self.start_handlers)
         else:
             self.gid = gid
             self.geo_region = geo_region
@@ -87,36 +121,54 @@ class Connection:
         self.active = True
         logger.info("goTenna Connection object initialised")
 
-    def start_handlers(self):
-        # start the queue handlers in the main nursery
-        config.nursery.start_soon(self.send_handler)
-        config.nursery.start_soon(self.recv_handler)
-        logger.debug("goTenna Connection handlers started")
+    async def start_handlers(self):
+        """Helper to run the handlers in their own nursery.
+        """
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(self.send_handler)
+            nursery.start_soon(self.recv_handler)
+            logger.debug("goTenna Connection handlers started")
+        logger.debug("handler nursery exited")
 
     @staticmethod
-    async def parse_recv_mesh_msg(msg: goTenna.message.Message):
+    async def new_inbound(node, _from, task_status=trio.TASK_STATUS_IGNORED):
+        logger.debug("Queues not initialised... Initialising")
+        node.init_queues()
+        task_status.started()
+        # start a new handle_inbound for this connection
+        async with trio.open_nursery() as nursery:
+            await nursery.start(proxy.handle_inbound, _from)
+
+    async def parse_recv_mesh_msg(self, msg: goTenna.message.Message):
         """Parses a received message.
         If a node does not exist for this pubkey, then it creates the node and inits the
         queues. It will start a new `handle_inbound` (in the main nursery) which will
         monitor this node.
         Puts the received message in the correct queue (stream) with header stripped.
         """
-        # logger.debug(f"Received message {msg.payload._binary_data.hex()}")
+        # logger.debug(f"RECV: {util.hex_dump(msg.payload._binary_data)}")
         _to = msg.destination.gid_val
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
         try:
-            node = network.router.get_node(_from)
+            node = router.get_node(_from)
         except LookupError:
-            logger.error(f"Node {_from} not found in router")
+            logger.exception(f"Node {_from} not found in router")
             # TODO: Create the new node here
-            return
-        if (node.outbound or node.inbound) is None:
-            logger.debug("Queues not initialised... Initialising")
-            node.init_queues()
-            # start a new handle_inbound for this connection
-            await config.nursery.start(proxy.handle_inbound, _from)
-        await node.inbound[0].send_all(msg.payload._binary_data)
+            raise
+        except Exception:
+            logger.debug("Exception getting node")
+            raise
+        else:
+            if (node.outbound or node.inbound) is None:
+                await self.nursery.start(self.new_inbound, node, _from)
+            try:
+                await node.inbound[0].send_all(msg.payload._binary_data)
+            except Exception:
+                logger.exception(
+                    "Exception in await node.inbound[0].send_all(msg.payload._binary_data)"
+                )
+                raise
 
     @util.rate_dec()
     async def lookup_and_send(self, msg):
@@ -125,14 +177,25 @@ class Connection:
         # Extract the GID from the header
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
-        self.send_private(to_gid, msg[8:], binary=True)
+        logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
+        while True:
+            try:
+                self.send_private(to_gid, msg[8:], binary=True)
+            except Exception:
+                logger.exception("Exception in lookup_and_send")
+            else:
+                break
 
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
         """
         logger.debug("Started send_handler")
-        async for msg in self.send_mesh_recv:
-            await self.lookup_and_send(msg)
+        try:
+            async for msg in self.send_mesh_recv:
+                await self.lookup_and_send(msg)
+        except Exception:
+            logger.exception("Exception in send_handler")
+            raise
 
     async def recv_handler(self):
         """Handles all messages received from the mesh.
@@ -140,10 +203,14 @@ class Connection:
         """
         logger.debug("Started recv_handler")
         while True:
-            if not self.recv_msg_q.empty():
-                await self.parse_recv_mesh_msg(self.recv_msg_q.get())
-            else:
-                await trio.sleep(1)
+            try:
+                if not self.recv_msg_q.empty():
+                    await self.parse_recv_mesh_msg(self.recv_msg_q.get())
+                else:
+                    await trio.sleep(0)
+            except Exception:
+                logger.debug("Exception in recv_handler")
+                raise
 
     def configure(self):
         if self.api_thread:
@@ -153,9 +220,9 @@ class Connection:
             self.set_geo_region(self.geo_region)
             self.set_gid(self.gid)
 
-    def reset_connection(self):
-        if self.api_thread:
-            self.api_thread.join()
+    # def reset_connection(self):
+    #     if self.api_thread:
+    #         self.api_thread.join()
 
     def set_sdk_token(self, sdk_token):
         """set sdk_token for the connection
@@ -184,9 +251,7 @@ class Connection:
                 )
             # Manage the API thread with Trio so we can communicate back to it if needed
             if self.is_plugin:
-                config.nursery.start_soon(
-                    trio.to_thread.run_sync, self.api_thread.run,
-                )
+                self.nursery.start_soon(trio.to_thread.run_sync, self.api_thread.run)
             else:
                 self.api_thread.start()
         except ValueError:
@@ -203,10 +268,9 @@ class Connection:
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
             if self.is_plugin:
-                # self.recv_msg_q.put(evt.message.payload._binary_data)
+                logger.debug(f"RCVD: {util.msg_hash(evt.message.payload._binary_data)}")
                 # We put the whole message on the queue so we can extract GID data
                 self.recv_msg_q.put(evt.message)
-                # logger.debug(evt.message)
             else:
                 print(f"Received message: {evt.message}")
                 self.recvd_msgs.append(evt)
@@ -218,7 +282,7 @@ class Connection:
                 logger.info("Device physically connected, configure to continue")
                 try:
                     self.configure()
-                except:
+                except Exception:
                     logger.exception(
                         f"Incurred exception whilst trying to auto-configure:",
                     )
@@ -318,7 +382,7 @@ class Connection:
                         "status": "failed",
                     }
                     # self.events.callback.put(result)
-                    logger.info(result)
+                    logger.error(result)
 
         return callback
 
@@ -394,7 +458,7 @@ class Connection:
                 ] = f"Broadcast message: {message} ({len(message)} bytes)\n"
 
                 if binary:
-                    # utilities.hexdump(message, send=True)
+                    # logger.debug(f"SENT: {util.msg_hash(message)}")
                     ...
             except ValueError:
                 logger.error(
@@ -440,7 +504,8 @@ class Connection:
         if not self.api_thread.connected:
             logger.error("Must connect first")
             return
-        if not _gid:
+        if not _gid and message:
+            logger.debug(f"GID or message missing. GID={_gid}, MESSAGE={message}")
             return
 
         def error_handler(details):
@@ -473,12 +538,20 @@ class Connection:
                 # encrypt=self._do_encryption,
                 encrypt=encrypt,
             )
+            logger.debug(f"SENT: {util.msg_hash(message)}")
         except ValueError:
             logger.error("Message too long!")
             return
-        self.in_flight_events[
-            corr_id.bytes
-        ] = f"Private message to {_gid.gid_val}: {message}"
+        while True:
+            try:
+                self.in_flight_events[
+                    corr_id.bytes
+                ] = f"Private message to {_gid.gid_val}: {message}"
+            except Exception:
+                logger.exception("Unhandled exception related to in_flight_events")
+                raise
+            else:
+                break
 
     def get_device_type(self):
         device = self.api_thread.device_type

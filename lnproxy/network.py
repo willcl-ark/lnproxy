@@ -1,4 +1,3 @@
-import itertools
 import logging
 
 import trio
@@ -14,36 +13,27 @@ class Node:
     """A Node in the routing table.
     """
 
-    def __init__(self, gid: int, pubkey: str, nonce=None, outbound=None, inbound=None):
+    def __init__(self, gid: int, pubkey: str, outbound=None, inbound=None):
         self.gid = gid
         self.pubkey = pubkey
-        self._nonce = nonce if nonce else itertools.count(0)
         self.outbound = outbound
         self.inbound = inbound
         # Node message header is GID as Big Endian 8 bytestring
         self.header = self.gid.to_bytes(8, "big")
 
     def __str__(self):
-        return f"GID: {self.gid}, PUBKEY: {self.pubkey}"
+        return f"GID: {self.gid}, PUBKEY: [{self.pubkey[:4]}...{self.pubkey[-4:]}]"
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}({self.gid}, {self.pubkey}, {self.nonce}, "
+            f"{self.__class__.__name__}({self.gid}, {self.pubkey}, "
             f"{self.outbound}, {self.inbound})"
         )
 
     def __eq__(self, other):
         return self.gid == other.gid and self.pubkey == other.pubkey
 
-    @property
-    def nonce(self):
-        """Returns the current nonce value we are using for encrypted messages with this
-         node.
-        """
-        return self._nonce.__next__()
-
     def init_queues(self):
-        self._nonce = itertools.count()
         self.outbound = trio.open_memory_channel(50)
         self.inbound = trio.testing.memory_stream_one_way_pair()
 
@@ -99,26 +89,19 @@ class Router:
     def lookup_gid(self, pubkey: str):
         """Returns GID of first pubkey matched in self.nodes.
         """
-        try:
-            return self.by_pubkey[pubkey].gid
-        except LookupError:
-            raise LookupError(f"Pubkey {pubkey} not found in Router for lookup_gid.")
+        return self.by_pubkey[pubkey].gid
 
     def get_node(self, gid):
         """Returns the first node found in the router with matching GID.
         """
         return self.by_gid[gid]
 
-    def get_nonce(self, gid):
-        for node in self.nodes:
-            if node.gid == gid:
-                return node.nonce
-        raise LookupError(f"GID {gid} not found in Router for get_nonce.")
-
     def init_node(self, gid):
-        for node in self.nodes:
-            if node.gid == gid:
-                node.init_queues()
+        self.by_gid[gid].init_queues()
+
+    def cleanup(self, gid):
+        self.by_gid[gid].outbound = None
+        self.by_gid[gid].inbound = None
 
 
 router = Router()

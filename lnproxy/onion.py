@@ -50,7 +50,6 @@ def encode_hop_data(
 def generate_new(
     my_pubkey: hex,
     next_pubkey: hex,
-    # pubkeys: list,
     amount_msat: int,
     payment_hash: bytes,
     cltv_expiry: int,

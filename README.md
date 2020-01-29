@@ -50,7 +50,7 @@ Lnproxy is run by C-Lightning as a plugin, and we need to tell C-Lightning how t
 
     # e.g. on OSX you might do
     export PATH_TO_BITCOIN="~/Library/Application\ Support/Bitcoin"
-    export PLUGIN_PATH="~/src/lnproxy/plugin/gotenna.py"
+    export PLUGIN_PATH="/Users/will/src/lnproxy/plugin/gotenna.py"
     
 Change to the right directory and source the script:
 
@@ -69,6 +69,14 @@ To watch the output logs (via C-Lightning logger) of each node, you can run (eac
     tail -f /tmp/l1-regtest/log | grep gotenna
     tail -f /tmp/l2-regtest/log | grep gotenna
     tail -f /tmp/l3-regtest/log | grep gotenna
+
+While we wait, lets generate some blocks in Bitcoin Core, as C-Lightning takes some time to register them:
+
+    bt-cli generatetoaddress 101 $(bt-cli getnewaddress "" bech32)
+    bt-cli sendtoaddress $(l1-cli newaddr | jq -r '.bech32') 1
+    bt-cli sendtoaddress $(l2-cli newaddr | jq -r '.bech32') 1
+    bt-cli sendtoaddress $(l3-cli newaddr | jq -r '.bech32') 1
+    bt-cli generatetoaddress 6 $(bt-cli getnewaddress "" bech32)
     
 Next connect and power on 3 goTenna devices, you should see them connecting in the log messages. Now we can connect the C-Lightning nodes together. In the terminal window where we sourced our helper functions, run the following:
 

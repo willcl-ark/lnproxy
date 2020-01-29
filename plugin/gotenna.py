@@ -19,6 +19,7 @@ from lnproxy.proxy import serve_outbound
 gotenna_plugin = lightning.Plugin()
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("plugin")
+router = network.router
 
 
 gotenna_plugin.add_option(
@@ -33,7 +34,7 @@ gotenna_plugin.add_option(
 def show_router(plugin=None):
     """Returns the current view of the goTenna plugin's router.
     """
-    return str(network.router)
+    return str(router)
 
 
 @gotenna_plugin.method("gid")
@@ -50,39 +51,41 @@ def add_node(gid, pubkey, plugin=None):
     arg: pubkey: a node's lightning pubkey
     """
     # Check that GID and pubkey are valid
-    assert 0 <= int(gid) <= GID_MAX
+    if not 0 <= int(gid) <= GID_MAX:
+        return f"GID {gid} not in range 0 <= n <= {GID_MAX}"
     try:
         _pubkey = PublicKey(pubkey=bytes.fromhex(pubkey), raw=True)
-    except Exception:
+    except Exception as e:
         logger.exception("Error with pubkey")
+        return f"Error with pubkey: {e}"
     # Add to router
     _node = network.Node(int(gid), str(pubkey))
     # Check for dupes
-    if gid in network.router:
+    if gid in router:
         return (
             f"GID {gid} already in router, remove before adding again: "
-            f"{network.router.get_node(gid)}"
+            f"{router.get_node(gid)}"
         )
-    if pubkey in network.router:
+    elif pubkey in router:
         return (
             f"Pubkey {pubkey} already in router, remove before adding again: "
-            f"{network.router.get_node(network.router.lookup_gid(pubkey))}"
+            f"{router.get_node(router.lookup_gid(pubkey))}"
         )
-
-    network.router.add(_node)
-    return f"{_node} added to gotenna plugin router."
+    else:
+        router.add(_node)
+        return f"{_node} added to gotenna plugin router."
 
 
 @gotenna_plugin.method("remove-node")
 def remove_node(gid, plugin=None):
     """Remove a node from the network router using GID
     """
-    if gid not in network.router:
+    if gid not in router:
         return f"GID {gid} not found in router."
     try:
-        network.router.remove(gid)
+        router.remove(gid)
     except Exception as e:
-        return e
+        return f"Error removing node from router: {e}"
     else:
         return f"Node with GID {gid} removed from router."
 
@@ -92,12 +95,12 @@ def proxy_connect(gid, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
     try:
-        pubkey = network.router.lookup_pubkey(gid)
+        pubkey = router.lookup_pubkey(gid)
     except LookupError as e:
         return f"Could not find GID {gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {gid} via goTenna mesh connection")
     # Generate a random fd to listen on for this outbound connection.
-    listen_addr = f"/tmp/0{uuid.uuid1().hex}"
+    listen_addr = f"/tmp/0{uuid.uuid4().hex}"
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
     trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", gid)
@@ -132,14 +135,14 @@ def message(
         logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
-    description = f"{uuid.uuid1().hex} encrypted message to {_message.dest_pubkey}"
+    description = f"{uuid.uuid4().hex} encrypted message to {_message.dest_pubkey}"
 
     # Store message for later.
     # The traffic proxy will add the encrypted message onto the outbound
     # htlc_add_update message.
     config.key_sends[_message.payment_hash.digest()] = _message
     logger.debug(
-        f"Stored message at config.key_sends[{_message.payment_hash.digest()}]"
+        f"Stored message in config.key_sends[{_message.payment_hash.digest()}]"
     )
 
     # Get next peer in route
@@ -158,9 +161,13 @@ def message(
     ]
     logger.info(f"Got route to {peer}, executing sendpay command.")
 
-    return config.rpc.sendpay(
+    result = config.rpc.sendpay(
         route, _message.payment_hash.hexdigest(), description, amt_msat
     )
+    return {
+        "sendpay_result": result,
+        "monitor_command": f"waitsendpay {_message.payment_hash.hexdigest()}",
+    }
 
 
 @gotenna_plugin.init()
@@ -173,8 +180,8 @@ def init(options, configuration, plugin):
     config.node_info = plugin.rpc.getinfo()
     logger.debug(config.node_info)
     # Add ourselves to the routing table
-    add_node(plugin.get_option("gid"), config.node_info["id"])
-    logger.debug(network.router)
+    router.add(network.Node(int(plugin.get_option("gid")), str(config.node_info["id"])))
+    logger.debug(router)
     # ======= WARNING =======
     # Store our node private key for message decryption
     config.node_secret_key = str(
@@ -197,17 +204,13 @@ async def main():
     which must be at startup.
     """
     # This nursery will run our main tasks for us:
-    try:
-        async with trio.open_nursery() as config.nursery:
-            # We run the plugin itself in a synchronous thread so trio.run() maintains
-            # overall control of the app.
-            config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
-            # Start the goTenna connection daemon.
-            config.nursery.start_soon(connection_daemon)
-    except:
-        logger.exception("Exception in main loop:")
-    finally:
-        logger.info("goTenna plugin finished.")
+    async with trio.open_nursery() as config.nursery:
+        # We run the plugin itself in a synchronous thread so trio.run() maintains
+        # overall control of the app.
+        config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
+        # Start the goTenna connection daemon.
+        config.nursery.start_soon(connection_daemon)
+    logger.info("goTenna plugin exited.")
 
 
 trio.run(main)
