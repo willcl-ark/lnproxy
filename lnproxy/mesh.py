@@ -504,7 +504,8 @@ class Connection:
         if not self.api_thread.connected:
             logger.error("Must connect first")
             return
-        if not _gid:
+        if not _gid and message:
+            logger.debug(f"GID or message missing. GID={_gid}, MESSAGE={message}")
             return
 
         def error_handler(details):
