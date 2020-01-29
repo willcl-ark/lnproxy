@@ -315,7 +315,6 @@ class HandshakeMessage:
         req_len = hs_pkt_size[initiator][i]
         message = bytearray()
         message += await util.receive_exactly(stream, req_len)
-        # message += await stream.receive_some(req_len)
         return cls(message)
 
 
@@ -338,7 +337,7 @@ class LightningMessage:
         """Reads a full lightning message from a stream.
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
-        header = await stream.receive_some(config.MSG_HEADER)
+        header = await util.receive_exactly(stream, config.MSG_HEADER)
         # logger.debug(f"read received header:\n{util.hex_dump(header)}")
 
         # Bolt #8: 2-byte message length
@@ -393,7 +392,7 @@ class LightningMessage:
             _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
             self.header = _header
             self.body = _body
-            return
+        return True
 
 
 def deserialize_type(msg_type: bytes) -> int:
