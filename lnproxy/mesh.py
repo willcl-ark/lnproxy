@@ -36,14 +36,14 @@ async def send_queue_daemon(send):
     while True:
         # No connections yet
         if len(network.router) == 0:
-            await trio.sleep(1)
+            await trio.sleep(0)
         else:
             for node in network.router.nodes:
                 if node.outbound is not None:
                     try:
                         _msg = node.outbound[1].receive_nowait()
                     except trio.WouldBlock:
-                        await trio.sleep(0.1)
+                        await trio.sleep(0)
                     else:
                         # Split it into 200B chunks and add header
                         msg_iter = util.chunk_to_list(_msg, 200, node.header)
@@ -51,7 +51,7 @@ async def send_queue_daemon(send):
                         for message in msg_iter:
                             await send.send(message)
                 else:
-                    await trio.sleep(1)
+                    await trio.sleep(0)
 
 
 async def connection_daemon():
@@ -207,7 +207,7 @@ class Connection:
                 if not self.recv_msg_q.empty():
                     await self.parse_recv_mesh_msg(self.recv_msg_q.get())
                 else:
-                    await trio.sleep()
+                    await trio.sleep(0)
             except Exception:
                 logger.debug("Exception in recv_handler")
                 raise
