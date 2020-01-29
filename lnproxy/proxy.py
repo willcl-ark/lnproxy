@@ -36,8 +36,9 @@ class Proxy:
             return bytes(message.message)
         else:
             message = await msg.LightningMessage.read(stream, to_mesh)
-            await message.parse()
-            return bytes(message.header + message.body + message.body_mac)
+            if await message.parse():
+                return bytes(message.header + message.body + message.body_mac)
+            return b""
 
     async def _run_proxy(self, read, write, initiator: bool, to_mesh: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
