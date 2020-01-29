@@ -19,7 +19,11 @@ SPI_READY = 27
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
-gotenna_logger.setLevel(level=logging.WARNING)
+gotenna_logger.setLevel(level=logging.DEBUG)
+goTenna_device_l1ll111111_opy_logger = logging.getLogger(
+    "goTenna.device.l1ll111111_opy_"
+)
+goTenna_device_l1ll111111_opy_logger.setLevel(level=logging.WARNING)
 router = network.router
 
 
@@ -149,12 +153,22 @@ class Connection:
         try:
             node = router.get_node(_from)
         except LookupError:
-            logger.error(f"Node {_from} not found in router")
+            logger.exception(f"Node {_from} not found in router")
             # TODO: Create the new node here
-            return
-        if (node.outbound or node.inbound) is None:
-            await self.nursery.start(self.new_inbound, node, _from)
-        await node.inbound[0].send_all(msg.payload._binary_data)
+            raise
+        except Exception:
+            logger.debug("Exception getting node")
+            raise
+        else:
+            if (node.outbound or node.inbound) is None:
+                await self.nursery.start(self.new_inbound, node, _from)
+            try:
+                await node.inbound[0].send_all(msg.payload._binary_data)
+            except Exception:
+                logger.exception(
+                    "Exception in await node.inbound[0].send_all(msg.payload._binary_data)"
+                )
+                raise
 
     @util.rate_dec()
     async def lookup_and_send(self, msg):
@@ -163,14 +177,25 @@ class Connection:
         # Extract the GID from the header
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
-        self.send_private(to_gid, msg[8:], binary=True)
+        logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
+        while True:
+            try:
+                self.send_private(to_gid, msg[8:], binary=True)
+            except Exception:
+                logger.exception("Exception in lookup_and_send")
+            else:
+                break
 
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
         """
         logger.debug("Started send_handler")
-        async for msg in self.send_mesh_recv:
-            await self.lookup_and_send(msg)
+        try:
+            async for msg in self.send_mesh_recv:
+                await self.lookup_and_send(msg)
+        except Exception:
+            logger.exception("Exception in send_handler")
+            raise
 
     async def recv_handler(self):
         """Handles all messages received from the mesh.
@@ -178,10 +203,14 @@ class Connection:
         """
         logger.debug("Started recv_handler")
         while True:
-            if not self.recv_msg_q.empty():
-                await self.parse_recv_mesh_msg(self.recv_msg_q.get())
-            else:
-                await trio.sleep(0.1)
+            try:
+                if not self.recv_msg_q.empty():
+                    await self.parse_recv_mesh_msg(self.recv_msg_q.get())
+                else:
+                    await trio.sleep()
+            except Exception:
+                logger.debug("Exception in recv_handler")
+                raise
 
     def configure(self):
         if self.api_thread:
@@ -353,7 +382,7 @@ class Connection:
                         "status": "failed",
                     }
                     # self.events.callback.put(result)
-                    logger.info(result)
+                    logger.error(result)
 
         return callback
 
@@ -512,9 +541,16 @@ class Connection:
         except ValueError:
             logger.error("Message too long!")
             return
-        self.in_flight_events[
-            corr_id.bytes
-        ] = f"Private message to {_gid.gid_val}: {message}"
+        while True:
+            try:
+                self.in_flight_events[
+                    corr_id.bytes
+                ] = f"Private message to {_gid.gid_val}: {message}"
+            except Exception:
+                logger.exception("Unhandled exception related to in_flight_events")
+                raise
+            else:
+                break
 
     def get_device_type(self):
         device = self.api_thread.device_type

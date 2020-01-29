@@ -371,9 +371,6 @@ class LightningMessage:
         """Parse a lightning message, optionally modify and then return it
         """
         direction = "Sent" if self.to_mesh else "Rcvd"
-        # handle empty messages gracefully
-        if self.body == b"":
-            return
 
         self.deserialize_body()
 

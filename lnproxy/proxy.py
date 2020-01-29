@@ -64,9 +64,16 @@ class Proxy:
             )
         # Main proxy loop
         while True:
-            message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-            await send(message)
-            i += 1
+            try:
+                message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
+                if message:
+                    await send(message)
+                i += 1
+            except trio.Cancelled:
+                pass
+            except Exception:
+                logger.exception("exception in proxy loop")
+                raise
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
@@ -106,7 +113,7 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
             nursery.start_soon(proxy.start)
     except Exception:
         logger.exception(f"handle_inbound for GID {gid} encountered an exception")
-        return
+        raise
     # cleanup after connection closed
     finally:
         router.cleanup(gid)
@@ -136,7 +143,7 @@ async def handle_outbound(stream: trio.SocketStream, gid: int):
             nursery.start_soon(proxy.start)
     except Exception:
         logger.exception(f"handle_outbound for GID {gid} encountered an exception")
-        return
+        raise
     finally:
         router.cleanup(gid)
         with trio.fail_after(2):
