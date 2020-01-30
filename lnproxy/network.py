@@ -3,6 +3,7 @@ import logging
 import trio
 import trio.testing
 
+import lnproxy.config as config
 from lnproxy.util import CustomAdapter
 
 
@@ -34,7 +35,7 @@ class Node:
         return self.gid == other.gid and self.pubkey == other.pubkey
 
     def init_queues(self):
-        self.outbound = trio.open_memory_channel(50)
+        self.outbound = config.mesh_conn.to_mesh_send.clone()
         self.inbound = trio.testing.memory_stream_one_way_pair()
 
 

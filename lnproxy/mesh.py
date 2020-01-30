@@ -27,33 +27,6 @@ goTenna_device_l1ll111111_opy_logger.setLevel(level=logging.WARNING)
 router = network.router
 
 
-async def send_queue_daemon(send):
-    """Monitors all send queues in the router, splits messages to 200B length, appends
-    header and puts messages in general mesh send queue.
-    Should be run continuously in it's own thread/task.
-    """
-    logger.debug("Started send_queue_daemon")
-    while True:
-        # No connections yet
-        if len(network.router) == 0:
-            await trio.sleep(0)
-        else:
-            for node in network.router.nodes:
-                if node.outbound is not None:
-                    try:
-                        _msg = node.outbound[1].receive_nowait()
-                    except trio.WouldBlock:
-                        await trio.sleep(0)
-                    else:
-                        # Split it into 200B chunks and add header
-                        msg_iter = util.chunk_to_list(_msg, 200, node.header)
-                        # Add it to send_mesh memory_channel
-                        for message in msg_iter:
-                            await send.send(message)
-                else:
-                    await trio.sleep(0)
-
-
 async def connection_daemon():
     """Load the goTenna mesh connection object (to persistent config.mesh_conn).
     Start the send_queue_daemon in its own nursery.
@@ -63,17 +36,16 @@ async def connection_daemon():
     while config.node_info is None:
         if i > 5:
             logger.debug("Waiting for node info in config.node_info")
-        await trio.sleep(0.1)
+        await trio.sleep(0.25)
         i += 1
     logger.debug("Got node info, starting connection")
     # start the mesh connection
     async with trio.open_nursery() as nursery:
         config.mesh_conn = Connection(is_plugin=True, nursery=nursery)
-        # start the send_queue_daemon:
         while config.mesh_conn.active is False:
-            await trio.sleep(0.1)
-        nursery.start_soon(send_queue_daemon, config.mesh_conn.send_mesh_send.clone())
+            await trio.sleep(0.25)
         logger.debug("Connection and send_queue_daemon started successfully")
+        await trio.sleep_forever()
 
 
 class Connection:
@@ -109,8 +81,8 @@ class Connection:
             self.nursery = nursery
             self.geo_region = config.geo_region
             self.sdk_token = config.sdk_token
-            self.send_mesh_send, self.send_mesh_recv = trio.open_memory_channel(50)
-            self.recv_msg_q = queue.Queue()
+            self.to_mesh_send, self.to_mesh_recv = trio.open_memory_channel(50)
+            self.from_mesh_send, self.from_mesh_recv = trio.open_memory_channel(50)
             self.nursery.start_soon(self.start_handlers)
         else:
             self.gid = gid
@@ -191,7 +163,7 @@ class Connection:
         """
         logger.debug("Started send_handler")
         try:
-            async for msg in self.send_mesh_recv:
+            async for msg in self.to_mesh_recv:
                 await self.lookup_and_send(msg)
         except Exception:
             logger.exception("Exception in send_handler")
@@ -270,7 +242,7 @@ class Connection:
             if self.is_plugin:
                 logger.debug(f"RCVD: {util.msg_hash(evt.message.payload._binary_data)}")
                 # We put the whole message on the queue so we can extract GID data
-                self.recv_msg_q.put(evt.message)
+                trio.from_thread.run(self.from_mesh_send.send, evt.message)
             else:
                 print(f"Received message: {evt.message}")
                 self.recvd_msgs.append(evt)

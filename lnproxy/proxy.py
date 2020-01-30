@@ -52,23 +52,17 @@ class Proxy:
         # or lightning message.
         i = 0
         hs_acts = 2 if initiator else 1
-        # Set 'send' as appropriate for the stream type passed in. If we are sending to
-        # C-Lightning, this will be a SocketStream. If we are sending to the mesh, this
-        # will be a MemorySendChannel.
-        if type(write) == trio.MemorySendChannel:
-            send = write.send
-        elif type(write) == trio.SocketStream:
-            send = write.send_all
-        else:
-            raise TypeError(
-                f"Incompatible write stream passed to _run_proxy: {type(write)}"
-            )
         # Main proxy loop
         while True:
-            try:
-                message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-                if message:
-                    await send(message)
+            message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
+            if message:
+                if to_mesh:
+                    for _msg in util.chunk_to_list(
+                        message, 200, self.gid.to_bytes(8, "big")
+                    ):
+                        await write(_msg)
+                else:
+                    await write(message)
                 i += 1
             except trio.Cancelled:
                 pass
