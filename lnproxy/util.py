@@ -171,10 +171,10 @@ def rate_dec():
         def limit(*args, **kwargs):
             # how many can we send per minute
             if config.UBER:
-                per_min = 5
+                per_min = 12
             else:
                 per_min = 5
-            min_interval = 10
+            min_interval = 2
             now = time.time()
             # add this send time to the list
             config.SEND_TIMES.append(now)

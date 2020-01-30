@@ -502,28 +502,43 @@ class Connection:
                         f"recipient may be offline or out of range",
                     )
 
+            # This loop might help us overcome quota limitation in gotenna where it
+            # otherwise insta-fails if we are over quota.10
+            i = 0
             corr_id = self.api_thread.send_private(
                 _gid,
                 payload,
                 method_callback,
                 ack_callback=ack_callback,
-                # encrypt=self._do_encryption,
                 encrypt=encrypt,
             )
+            while corr_id is None and i < 7:
+                logger.debug("corr_id is None, trying again!")
+                time.sleep(10)
+                corr_id = self.api_thread.send_private(
+                    _gid,
+                    payload,
+                    method_callback,
+                    ack_callback=ack_callback,
+                    encrypt=encrypt,
+                )
+                i += 1
+            if corr_id is None:
+                logger.debug(
+                    f"Could not send message {payload} to GID {gid} in {i} tries"
+                )
+                return
             logger.debug(f"SENT: {util.msg_hash(message)}")
         except ValueError:
             logger.error("Message too long!")
             return
-        while True:
-            try:
-                self.in_flight_events[
-                    corr_id.bytes
-                ] = f"Private message to {_gid.gid_val}: {message}"
-            except Exception:
-                logger.exception("Unhandled exception related to in_flight_events")
-                raise
-            else:
-                break
+        try:
+            self.in_flight_events[
+                corr_id.bytes
+            ] = f"Private message to {_gid.gid_val}: {message}"
+        except Exception:
+            logger.exception("Unhandled exception related to in_flight_events")
+            return
 
     def get_device_type(self):
         device = self.api_thread.device_type
