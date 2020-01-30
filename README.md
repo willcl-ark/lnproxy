@@ -32,8 +32,8 @@ Clone and setup:
     cd lnproxy
     python3 -m venv .venv
     source .venv/bin/activate
+    pip install --upgrade pip
     pip install -r requirements.txt
-    pip install -e .
     
 Next we add our goTenna SDK token and ONION_TOOL path to the config file:
 

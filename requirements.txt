@@ -30,3 +30,4 @@ sniffio==1.1.0
 sortedcontainers==2.1.0
 toolz==0.10.0
 trio==0.13.0
+-e .
