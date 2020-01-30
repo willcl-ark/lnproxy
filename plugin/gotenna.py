@@ -129,8 +129,10 @@ def message(
         _message.encrypt()
     except LookupError:
         logger.exception("Can't find pubkey or nonce needed for encryption in router")
+        return "Send message failed. Check logs for details."
     except TypeError:
         logger.exception("Invalid public key type for encryption")
+        return "Send message failed. Check logs for details."
     else:
         logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 

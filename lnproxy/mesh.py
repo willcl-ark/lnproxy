@@ -1,5 +1,4 @@
 import logging
-import queue
 import time
 
 import goTenna
@@ -20,6 +19,7 @@ SPI_READY = 27
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
 gotenna_logger.setLevel(level=logging.DEBUG)
+# Turn down this particularly noisy logger
 goTenna_device_l1ll111111_opy_logger = logging.getLogger(
     "goTenna.device.l1ll111111_opy_"
 )
@@ -94,7 +94,7 @@ class Connection:
         logger.info("goTenna Connection object initialised")
 
     async def start_handlers(self):
-        """Helper to run the handlers in their own nursery.
+        """Helper to run the handlers in their own nursery for extra protection!
         """
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self.send_handler)
@@ -118,15 +118,14 @@ class Connection:
         monitor this node.
         Puts the received message in the correct queue (stream) with header stripped.
         """
-        # logger.debug(f"RECV: {util.hex_dump(msg.payload._binary_data)}")
-        _to = msg.destination.gid_val
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
         try:
             node = router.get_node(_from)
         except LookupError:
             logger.exception(f"Node {_from} not found in router")
-            # TODO: Create the new node here
+            # Add to router
+            # TODO: Create the new node automagically here
             raise
         except Exception:
             logger.debug("Exception getting node")
@@ -175,14 +174,8 @@ class Connection:
         """
         logger.debug("Started recv_handler")
         while True:
-            try:
-                if not self.recv_msg_q.empty():
-                    await self.parse_recv_mesh_msg(self.recv_msg_q.get())
-                else:
-                    await trio.sleep(0)
-            except Exception:
-                logger.debug("Exception in recv_handler")
-                raise
+            async for msg in self.from_mesh_recv:
+                await self.parse_recv_mesh_msg(msg)
 
     def configure(self):
         if self.api_thread:
@@ -191,10 +184,6 @@ class Connection:
             self.set_sdk_token(self.sdk_token)
             self.set_geo_region(self.geo_region)
             self.set_gid(self.gid)
-
-    # def reset_connection(self):
-    #     if self.api_thread:
-    #         self.api_thread.join()
 
     def set_sdk_token(self, sdk_token):
         """set sdk_token for the connection
