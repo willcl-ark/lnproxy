@@ -1,5 +1,5 @@
 import pathlib
-import lnproxy.private as priv
+
 
 # BigSize struct formatting codes
 be_u8: str = ">B"
@@ -37,9 +37,18 @@ key_sends = {}
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
-sdk_token = priv.sdk_token
+UBER = False
+# Modify this sdk_token value
+sdk_token = None
+# Only for importing a debugging SDK token
+try:
+    import lnproxy.private as priv
+except ModuleNotFoundError:
+    pass
+else:
+    sdk_token = priv.sdk_token
+    UBER = True
 geo_region = 2
-UBER = True
 
 # TODO: These can be calculated on-the-fly from getroute
 #   we should hardcode CLTV used for all channel opens and routing fees
