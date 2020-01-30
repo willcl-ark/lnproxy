@@ -64,28 +64,37 @@ class Proxy:
                 else:
                     await write(message)
                 i += 1
-            except trio.Cancelled:
-                pass
-            except Exception:
-                logger.exception("exception in proxy loop")
-                raise
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
         # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.gid)
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(
-                self._run_proxy,
-                self.stream,
-                self.node.outbound[0],
-                self.stream_init,
-                True,
-            )
-            nursery.start_soon(
-                self._run_proxy, self.node.inbound[1], self.stream, self.q_init, False,
-            )
-        logger.debug(f"Proxy for GID {self.gid} exited")
+        try:
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(
+                    self._run_proxy,
+                    self.stream,
+                    self.node.outbound.send,
+                    self.stream_init,
+                    True,
+                )
+                nursery.start_soon(
+                    self._run_proxy,
+                    self.node.inbound[1],
+                    self.stream.send_all,
+                    self.q_init,
+                    False,
+                )
+        except msg.UnknownMessage:
+            logger.exception("Received an unknown message, closing connection")
+        except Exception:
+            logger.exception(f"Exception in proxy for GID {self.gid}")
+            # cleanup after connection closed
+        finally:
+            router.cleanup(self.gid)
+            with trio.fail_after(2):
+                await self.stream.aclose()
+            logger.debug(f"Proxy for GID {self.gid} exited")
 
 
 async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -103,18 +112,7 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     # Next proxy between the queue and the node.
     # q_init is True because remote is handshake initiator.
     proxy = Proxy(stream, gid, False, True)
-    try:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy.start)
-    except Exception:
-        logger.exception(f"handle_inbound for GID {gid} encountered an exception")
-        raise
-    # cleanup after connection closed
-    finally:
-        router.cleanup(gid)
-        with trio.fail_after(2):
-            await stream.aclose()
-        logger.debug(f"handle_inbound for GID {gid} finished.")
+    await proxy.start()
 
 
 async def handle_outbound(stream: trio.SocketStream, gid: int):
@@ -133,17 +131,7 @@ async def handle_outbound(stream: trio.SocketStream, gid: int):
     # stream_init is True because we are handshake initiator.
     router.init_node(gid)
     proxy = Proxy(stream, gid, True, False)
-    try:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(proxy.start)
-    except Exception:
-        logger.exception(f"handle_outbound for GID {gid} encountered an exception")
-        raise
-    finally:
-        router.cleanup(gid)
-        with trio.fail_after(2):
-            await stream.aclose()
-        logger.debug(f"handle_outbound for GID {gid} finished.")
+    await proxy.start()
 
 
 async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -160,11 +148,11 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
     # Report back to Trio that we've made the connection and are ready to receive
     task_status.started()
     # Start only a single handle_outbound for this connection.
-    async with trio.open_nursery() as nursery:
-        # noinspection PyProtectedMember
-        await trio._highlevel_serve_listeners._serve_one_listener(
-            trio.SocketListener(sock),
-            nursery,
-            functools.partial(handle_outbound, gid=gid),
-        )
+    # TODO: If we keep this open, will it allow re-connects?
+    await trio.serve_listeners(
+        functools.partial(handle_outbound, gid=gid),
+        [trio.SocketListener(sock)],
+        handler_nursery=None,
+        task_status=trio.TASK_STATUS_IGNORED,
+    )
     logger.debug(f"serve_outbound for GID {gid} finished.")
