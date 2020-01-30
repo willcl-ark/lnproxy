@@ -25,9 +25,8 @@ class Proxy:
         self.router = router
         self.node = router.get_node(gid)
 
-    @staticmethod
     async def read_message(
-        stream, i, hs_acts: int, initiator: bool, to_mesh: bool
+        self, stream, i, hs_acts: int, initiator: bool, to_mesh: bool
     ) -> bytes:
         """A stream reader which reads a handshake or lightning message and returns it.
         """
@@ -35,7 +34,7 @@ class Proxy:
             message = await msg.HandshakeMessage.read(stream, i, initiator)
             return bytes(message.message)
         else:
-            message = await msg.LightningMessage.read(stream, to_mesh)
+            message = await msg.LightningMessage.read(stream, to_mesh, self.stream)
             if await message.parse():
                 return bytes(message.header + message.body + message.body_mac)
             return b""

@@ -318,13 +318,16 @@ class HandshakeMessage:
 
 
 class LightningMessage:
-    def __init__(self, header, body_len, body_len_mac, body, body_mac, to_mesh):
+    def __init__(
+        self, header, body_len, body_len_mac, body, body_mac, to_mesh, return_stream
+    ):
         self.header = bytes(header)
         self.body_len = bytes(body_len)
         self.body_len_mac = bytes(body_len_mac)
         self.body = bytes(body)
         self.body_mac = bytes(body_mac)
         self.to_mesh = to_mesh
+        self.return_stream = return_stream
         self.msg_type = None
         self.msg_payload = None
         self.msg_code = None
@@ -332,7 +335,7 @@ class LightningMessage:
         self.gid = util.gid_key.get()
 
     @classmethod
-    async def read(cls, stream, to_mesh: bool):
+    async def read(cls, stream, to_mesh: bool, return_stream):
         """Reads a full lightning message from a stream.
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
@@ -353,12 +356,39 @@ class LightningMessage:
         # TODO: we can add a fake MAC on here saving 16 bytes
         # body_mac = 16 * (bytes.fromhex("00"))
 
-        return cls(header, body_len, body_len_mac, body, body_mac, to_mesh)
+        return cls(
+            header, body_len, body_len_mac, body, body_mac, to_mesh, return_stream
+        )
 
     def deserialize_body(self):
         self.msg_type = self.body[0:2]
         self.msg_payload = self.body[2:]
         self.msg_code = deserialize_type(self.msg_type)
+
+    async def return_pong(self):
+        # Unpack the PING to see what we need to return
+        bytes_len = struct.unpack(config.be_u16, self.body[2:4])[0]
+
+        # Now we can construct the response body
+        msg_type = struct.pack(config.be_u16, config.PONG)
+        bytes_len_return = struct.pack(config.be_u16, bytes_len)
+        ignored_return = struct.pack(f"{bytes_len}s", bytes_len * (bytes.fromhex("00")))
+        body = msg_type + bytes_len_return + ignored_return
+
+        # And now the response itself
+        response = bytearray()
+        # First the body length
+        response += struct.pack(">H", len(body))
+        # Add the fake body length MAC
+        response += 16 * (bytes.fromhex("00"))
+        # Now the body itself
+        response += body
+        # And the fake body MAC
+        response += 16 * (bytes.fromhex("00"))
+
+        # Now send back to the stream
+        await self.return_stream.send_all(response)
+        logger.debug(f"Echoed pong back without mesh")
 
     async def parse(self):
         """Parse a lightning message, optionally modify and then return it
@@ -386,6 +416,11 @@ class LightningMessage:
             _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
             self.header = _header
             self.body = _body
+
+        # If we get a ping, echo a pong right away!
+        if self.msg_code == config.PING:
+            await self.return_pong()
+            return False
         return True
 
 

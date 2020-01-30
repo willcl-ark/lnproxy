@@ -11,6 +11,8 @@ le_onion: str = "<1366s"
 
 # Lightning message size constants
 ADD_UPDATE_HTLC: int = 128
+PING = 18
+PONG = 19
 MAX_PKT_LEN: int = 65569
 MSG_LEN: int = 2
 MSG_LEN_MAC: int = 16
