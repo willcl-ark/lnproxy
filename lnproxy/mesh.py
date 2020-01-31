@@ -149,13 +149,7 @@ class Connection:
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
         logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
-        while True:
-            try:
-                self.send_private(to_gid, msg[8:], binary=True)
-            except Exception:
-                logger.exception("Exception in lookup_and_send")
-            else:
-                break
+        await self.send_private(to_gid, msg[8:], True)
 
     async def send_handler(self):
         """Monitors the shared send message queue and sends each message it finds there.
@@ -456,7 +450,7 @@ class Connection:
                 logger.error(f"{__gid} is not a valid GID.")
             return None, None
 
-    def send_private(self, gid: int, message, binary=False):
+    async def send_private(self, gid: int, message, binary=False):
         """ Send a private message to a contact
         GID is the GID to send the private message to.
         """
