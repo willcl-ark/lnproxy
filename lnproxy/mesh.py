@@ -141,7 +141,6 @@ class Connection:
                 )
                 raise
 
-    @util.rate_dec()
     async def lookup_and_send(self, msg):
         """Extract to_gid from message header and send the message over the mesh.
         """
