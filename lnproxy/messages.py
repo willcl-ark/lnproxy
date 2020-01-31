@@ -335,11 +335,16 @@ class LightningMessage:
         self.gid = util.gid_key.get()
 
     @classmethod
-    async def read(cls, stream, to_mesh: bool, return_stream):
+    async def read(cls, stream, to_mesh: bool, return_stream, cancel_scope):
         """Reads a full lightning message from a stream.
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
         header = await util.receive_exactly(stream, config.MSG_HEADER)
+
+        # If we got something and we have a cancel_scope, extend it a little
+        if cancel_scope:
+            logger.debug(f"Extending cancel_scope by 3 seconds because we got a header")
+            cancel_scope.deadline += 3
 
         # Bolt #8: 2-byte message length
         body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]
@@ -403,7 +408,10 @@ class LightningMessage:
             raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
 
         logger.debug(
-            f"{direction} | {codes.get(self.msg_code):<27s} | {len(self.msg_payload):>4d}B",
+            f"{direction} | "
+            f"{codes.get(self.msg_code):<27s} | "
+            f"{len(self.msg_payload):>4d}B | "
+            f"{hashlib.sha256(self.header + self.body + self.body_mac).hexdigest()}",
         )
 
         # handle htlc_add_update specially
