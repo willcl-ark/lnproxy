@@ -154,7 +154,7 @@ def message(
 
     # We add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
     # We add 60 to cltv (10 hops max, CLTV of 6 each)
-    amt_msat = msatoshi + 10
+    amt_msat = int(msatoshi) + 10
     cltv = 9 + 60
 
     # Get the route to the next hop.
@@ -163,13 +163,9 @@ def message(
     ]
     logger.info(f"Got route to {peer}, executing sendpay command.")
 
-    result = config.rpc.sendpay(
+    return config.rpc.sendpay(
         route, _message.payment_hash.hexdigest(), description, amt_msat
     )
-    return {
-        "sendpay_result": result,
-        "monitor_command": f"waitsendpay {_message.payment_hash.hexdigest()}",
-    }
 
 
 @gotenna_plugin.init()
