@@ -502,19 +502,13 @@ class Connection:
                         f"recipient may be offline or out of range",
                     )
 
-            # This loop might help us overcome quota limitation in gotenna where it
-            # otherwise insta-fails if we are over quota.10
+            # This loop helps us overcome quota limitation in gotenna where it
+            # otherwise insta-fails if we are over quota. Will retry every 2 seconds for
+            # 70 seconds. Quota is reset at 60s so this should always succeed unless
+            # peer has disappeared.
             i = 0
-            corr_id = self.api_thread.send_private(
-                _gid,
-                payload,
-                method_callback,
-                ack_callback=ack_callback,
-                encrypt=encrypt,
-            )
-            while corr_id is None and i < 7:
-                logger.debug("corr_id is None, trying again!")
-                time.sleep(10)
+            corr_id = None
+            while corr_id is None and i < 14:
                 corr_id = self.api_thread.send_private(
                     _gid,
                     payload,
@@ -523,8 +517,11 @@ class Connection:
                     encrypt=encrypt,
                 )
                 i += 1
+                if corr_id is None:
+                    await trio.sleep(5)
+                    logger.debug(f"corr_id is None, retrying: #{i}")
             if corr_id is None:
-                logger.debug(
+                logger.error(
                     f"Could not send message {payload} to GID {gid} in {i} tries"
                 )
                 return
