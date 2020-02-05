@@ -26,7 +26,13 @@ class Proxy:
         self.node = router.get_node(gid)
 
     async def read_message(
-        self, stream, i, hs_acts: int, initiator: bool, to_mesh: bool
+        self,
+        stream,
+        i,
+        hs_acts: int,
+        initiator: bool,
+        to_mesh: bool,
+        cancel_scope=None,
     ) -> bytes:
         """A stream reader which reads a handshake or lightning message and returns it.
         """
@@ -34,35 +40,56 @@ class Proxy:
             message = await msg.HandshakeMessage.read(stream, i, initiator)
             return bytes(message.message)
         else:
-            message = await msg.LightningMessage.read(stream, to_mesh, self.stream)
+            message = await msg.LightningMessage.read(
+                stream, to_mesh, self.stream, cancel_scope
+            )
             if await message.parse():
                 return bytes(message.header + message.body + message.body_mac)
             return b""
 
-    async def _run_proxy(self, read, write, initiator: bool, to_mesh: bool):
+    async def proxy_to_mesh(self, read, write, initiator: bool):
+        """Read from Local SocketStream and write to a MemoryStream.
+        Will try to batch messages.
+        Should not be called directly, instead use start().
+        """
+        logger.debug(f"Starting proxy, initiator={initiator}")
+        i = 0
+        hs_acts = 2 if initiator else 1
+        while True:
+            message = bytearray()
+            batched = 1
+
+            # Read one message from the socket
+            message += await self.read_message(read, i, hs_acts, initiator, True)
+            i += 1
+
+            # After we've got one, check to see if more can be batched
+            with trio.move_on_after(config.BATCH_DELAY) as cs:
+                while True:
+                    message += await self.read_message(
+                        read, i, hs_acts, initiator, True, cs
+                    )
+                    i += 1
+                    batched += 1
+            logger.debug(f"Batched {batched} messages")
+
+            # Chunk the messages and send them to the mesh
+            for _msg in util.chunk_to_list(
+                bytes(message), 200, self.gid.to_bytes(8, "big")
+            ):
+                await write(_msg)
+
+    async def proxy_from_mesh(self, read, write, init: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
         (the mesh "queue") or a trio.SocketStream.
         Should not be called directly, instead use start().
         """
-        logger.debug(f"Starting proxy(), initiator={initiator}")
-        # There are 3 handshake messages in a lightning node opening handshake act:
-        # Initiator 50B >> Recipient 50B >> Initiator 66B
-        # Here we set a counter so that we know whether to expect to process a handshake
-        # or lightning message.
+        logger.debug(f"Starting proxy, initiator={init}")
         i = 0
-        hs_acts = 2 if initiator else 1
-        # Main proxy loop
+        hs_acts = 2 if init else 1
         while True:
-            message = await self.read_message(read, i, hs_acts, initiator, to_mesh)
-            if message:
-                if to_mesh:
-                    for _msg in util.chunk_to_list(
-                        message, 200, self.gid.to_bytes(8, "big")
-                    ):
-                        await write(_msg)
-                else:
-                    await write(message)
-                i += 1
+            await write(await self.read_message(read, i, hs_acts, init, False))
+            i += 1
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
@@ -71,18 +98,16 @@ class Proxy:
         try:
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(
-                    self._run_proxy,
+                    self.proxy_to_mesh,
                     self.stream,
                     self.node.outbound.send,
                     self.stream_init,
-                    True,
                 )
                 nursery.start_soon(
-                    self._run_proxy,
+                    self.proxy_from_mesh,
                     self.node.inbound[1],
                     self.stream.send_all,
                     self.q_init,
-                    False,
                 )
         except msg.UnknownMessage:
             logger.exception("Received an unknown message, closing connection")

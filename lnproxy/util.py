@@ -150,8 +150,7 @@ async def receive_exactly(
 
 
 def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
-    """Adds data of arbitrary length to a queue in a certain chunk size and yields
-    tsresult as an iterator.
+    """Iterator to chunk data and append a header.
     """
     for i in range(0, len(data), chunk_len):
         yield (prefix + data[i : i + chunk_len])

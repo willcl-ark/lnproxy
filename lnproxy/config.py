@@ -39,6 +39,7 @@ key_sends = {}
 # goTenna Mesh
 mesh_conn = None
 SEND_TIMES = []
+BATCH_DELAY = 3
 UBER = False
 # Modify this sdk_token value
 sdk_token = None
