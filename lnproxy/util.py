@@ -1,10 +1,8 @@
 import contextvars
-import functools
 import hashlib
 import logging
 import pathlib
 import struct
-import time
 from typing import Union
 
 import trio
@@ -154,3 +152,42 @@ def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
     """
     for i in range(0, len(data), chunk_len):
         yield (prefix + data[i : i + chunk_len])
+
+
+suffixes = {
+    "decimal": ("kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"),
+    "binary": ("KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"),
+    "gnu": "KMGTPEZY",
+}
+
+
+def natural_size(value, binary=False, gnu=True, format="%.1f"):
+    """show us sizes nicely formatted
+    https://github.com/jmoiron/humanize.git
+    """
+    if gnu:
+        suffix = suffixes["gnu"]
+    elif binary:
+        suffix = suffixes["binary"]
+    else:
+        suffix = suffixes["decimal"]
+
+    base = 1024 if (gnu or binary) else 1000
+    bytes = float(value)
+
+    if bytes == 1 and not gnu:
+        return "1 Byte"
+    elif bytes < base and not gnu:
+        return "%d Bytes" % bytes
+    elif bytes < base and gnu:
+        return "%dB" % bytes
+
+    for i, s in enumerate(suffix):
+        unit = base ** (i + 2)
+        if bytes < unit and not gnu:
+            return (format + " %s") % ((base * bytes / unit), s)
+        elif bytes < unit and gnu:
+            return (format + "%s") % ((base * bytes / unit), s)
+    if gnu:
+        return (format + "%s") % ((base * bytes / unit), s)
+    return (format + " %s") % ((base * bytes / unit), s)

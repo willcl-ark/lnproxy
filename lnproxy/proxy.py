@@ -24,6 +24,9 @@ class Proxy:
         self.q_init = q_init
         self.router = router
         self.node = router.get_node(gid)
+        self.count_to_mesh = 0
+        self.bytes_to_mesh = 0
+        self.bytes_from_mesh = 0
 
     async def read_message(
         self,
@@ -38,26 +41,32 @@ class Proxy:
         """
         if i < hs_acts:
             message = await msg.HandshakeMessage.read(stream, i, initiator)
+            logger.debug(f"Read HS message {i}")
             return bytes(message.message)
         else:
-            message = await msg.LightningMessage.read(
-                stream, to_mesh, self.stream, cancel_scope
-            )
+            if to_mesh:
+                message = await msg.LightningMessage.from_stream(
+                    stream, to_mesh, self.stream, cancel_scope
+                )
+            else:
+                message = await msg.LightningMessage.from_stream(
+                    stream, to_mesh, self.stream, None
+                )
             if await message.parse():
-                return bytes(message.header + message.body + message.body_mac)
+                return bytes(message.returned_msg)
             return b""
 
-    async def proxy_to_mesh(self, read, write, initiator: bool):
+    async def _to_mesh(self, read, write, initiator: bool):
         """Read from Local SocketStream and write to a MemoryStream.
         Will try to batch messages.
         Should not be called directly, instead use start().
         """
-        logger.debug(f"Starting proxy, initiator={initiator}")
+        logger.debug(f"Starting proxy to_mesh, initiator={initiator}")
         i = 0
         hs_acts = 2 if initiator else 1
         while True:
             message = bytearray()
-            batched = 1
+            batched = 0
 
             # Read one message from the socket
             message += await self.read_message(read, i, hs_acts, initiator, True)
@@ -71,25 +80,42 @@ class Proxy:
                     )
                     i += 1
                     batched += 1
-            logger.debug(f"Batched {batched} messages")
+            if batched:
+                logger.debug(f"Batched {batched + 1} messages")
+            self.bytes_to_mesh += len(message)
 
-            # Chunk the messages and send them to the mesh
+            # Chunk the message and send them to the mesh
             for _msg in util.chunk_to_list(
-                bytes(message), 200, self.gid.to_bytes(8, "big")
+                bytes(message), config.CHUNK_SIZE, self.gid.to_bytes(8, "big")
             ):
                 await write(_msg)
+                self.count_to_mesh += 1
+            logger.debug(
+                f"TO_MESH  : "
+                f"read: {i}, "
+                f"sent: {self.count_to_mesh}, "
+                f"total_size: {util.natural_size(self.bytes_to_mesh)}"
+            )
 
-    async def proxy_from_mesh(self, read, write, init: bool):
+    async def _from_mesh(self, read, write, init: bool):
         """Read from a SocketStream and write to a trio.MemorySendChannel
         (the mesh "queue") or a trio.SocketStream.
         Should not be called directly, instead use start().
         """
-        logger.debug(f"Starting proxy, initiator={init}")
+        logger.debug(f"Starting proxy from_mesh, initiator={init}")
         i = 0
         hs_acts = 2 if init else 1
         while True:
-            await write(await self.read_message(read, i, hs_acts, init, False))
+            message = await self.read_message(read, i, hs_acts, init, False)
+            await write(message)
             i += 1
+            self.bytes_from_mesh += len(message)
+            logger.debug(
+                f"FROM_MESH: "
+                f"read: {i}, "
+                f"sent: {i}, "
+                f"total_size: {util.natural_size(self.bytes_from_mesh)}"
+            )
 
     async def start(self):
         logger.info(f"Proxying between local node and GID {self.gid}")
@@ -98,13 +124,13 @@ class Proxy:
         try:
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(
-                    self.proxy_to_mesh,
+                    self._to_mesh,
                     self.stream,
                     self.node.outbound.send,
                     self.stream_init,
                 )
                 nursery.start_soon(
-                    self.proxy_from_mesh,
+                    self._from_mesh,
                     self.node.inbound[1],
                     self.stream.send_all,
                     self.q_init,
