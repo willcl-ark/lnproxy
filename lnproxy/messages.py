@@ -54,67 +54,81 @@ class UnknownMessage(Exception):
 
 
 class EncryptedMessage:
-    """A message sent via C-Lightning plugin RPC.
+    """An encrypted message sent via C-Lightning gotenna plugin.
+    The message will be encrypted using ecies scheme, with the following parameters:
+
+    shared_key: fixed between sessions, generated from the sender and receiver lightning
+        node privkey/pubkey pairs
+
+    nonce: fixed to the bitcoin network magic (D9B4BEF9) padded to 16 big endian bytes.
+        The nonce can be supplied manually for encryption and decryption if desired.
     """
 
     def __init__(
         self,
-        gid: int = int(),
-        plain_text: str = str(),
-        encrypted_msg: bytes = bytes(),
-        dest_pubkey: str = str(),
-        nonce: bytes = bytes(),
+        send_sk: str = "",
+        send_pk: str = "",
+        send_id: bytes = b"",
+        recv_sk: str = "",
+        recv_pk: str = "",
+        plain_text: str = "",
+        encrypted_msg: bytes = b"",
+        # We default to a known hardcoded nonce
+        nonce: bytes = config.nonce,
     ):
-        self.gid = gid
+        self.send_sk = send_sk
+        self.send_pk = send_pk
+        self.send_id = send_id
+        self.recv_sk = recv_sk
+        self.recv_pk = recv_pk
         self.plain_text = plain_text
         self.encrypted_msg = encrypted_msg
-        self.msatoshi: int = int()
-        self.dest_pubkey = dest_pubkey
-        self.nonce: bytes = nonce
-        self.preimage = None
-        self.payment_hash = None
-        self.sender_pubkey: str = str()
+        self.nonce = nonce
+        self.preimage: bytes = bytes()
+        self.payment_hash: bytes = bytes()
         self.decrypted_msg: bytes = bytes()
         logger.debug(f"Created {repr(self)}")
 
     def __str__(self):
-        return (
-            f"EncryptedMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
-            f"{self.decrypted_msg}"
-        )
+        return vars(self)
 
     def __repr__(self):
-        return (
-            f"EncryptedMessage({self.gid}, {self.plain_text}, {self.encrypted_msg}, "
-            f"{self.decrypted_msg}, {self.dest_pubkey}, {self.nonce}, "
-            f"{self.preimage}, {self.payment_hash}, "
-            f"{self.sender_pubkey}, {self.decrypted_msg})"
-        )
+        return f"EncryptedMessage({self.send_sk}, {self.send_pk}, {self.recv_sk}, {self.recv_pk}, {self.plain_text}, {self.encrypted_msg}, {self.nonce})"
 
     def encrypt(self):
-        # First lookup the pubkey from the GID
-        self.dest_pubkey = router.lookup_pubkey(self.gid)
+        """Encrypt the message stored in self.plain_text using above ecies scheme.
+
+        :returns:
+            None
+        """
+        if not len(self.send_id) == 1:
+            raise ValueError(
+                f"sender_id is too long: {len(self.send_id)} bytes vs allowed: 1 byte"
+            )
         # Generate the preimage and payment hash
-        self.preimage = hashlib.sha256(self.plain_text.encode("utf-8"))
-        self.payment_hash = hashlib.sha256(self.preimage.digest())
-        # Set the nonce to the first 16 bytes of the payment_hash
-        # TODO: Is this secure enough?
-        self.nonce = self.payment_hash.digest()[:16]
-        # Try to encrypt
+        self.preimage = hashlib.sha256(self.plain_text.encode("utf-8")).digest()
+        self.payment_hash = hashlib.sha256(self.preimage).digest()
+        # Try to encrypt, first prepend the send_id
         try:
-            self.encrypted_msg = crypto.encrypt(
-                self.dest_pubkey, self.plain_text.encode("utf-8"), self.nonce
+            self.encrypted_msg = self.send_id
+            self.encrypted_msg += crypto.encrypt(
+                self.send_sk, self.recv_pk, self.plain_text.encode("utf-8"), self.nonce
             )
         except TypeError:
             raise
         logger.debug(f"Encrypted message: {repr(self)}")
-        return self.encrypted_msg
+        return True
 
-    def decrypt(self, payment_hash: bytes):
-        # Set the nonce to the first 16 bytes of the payment_hash
-        self.nonce = payment_hash[:16]
+    def decrypt(self):
+        """Attempt decryption of the ciphertext using own privkey and sender pubkey.
+        Error handling of this function is essential, because decryption attempt is the
+        only way to know if you are the intended recipient!
+
+        :returns: Union[bytes, bytes, bytes]
+            preimage, payment_hash, decrypted_msg
+        """
         self.decrypted_msg = crypto.decrypt(
-            config.node_secret_key, bytes(self.encrypted_msg), self.nonce
+            self.send_pk, config.node_secret_key, bytes(self.encrypted_msg), self.nonce
         )
         self.preimage = hashlib.sha256(self.decrypted_msg).digest()
         self.payment_hash = hashlib.sha256(self.preimage).digest()
@@ -235,20 +249,25 @@ class AddUpdateHTLC:
     def try_decode(self):
         # Get the length of it from the first 2 bytes
         enc_msg_len = struct.unpack(config.be_u16, self.payload[84:86])[0]
+        # The first byte is the short sender_id
+        send_id = int.from_bytes(self.payload[86:87], "big")
         logger.debug(f"Encoded message length: {enc_msg_len}")
-        # Get the message itself
-        enc_msg = EncryptedMessage(encrypted_msg=self.payload[86 : 86 + enc_msg_len],)
-        # enc_msg.nonce = router.get_node(gid).nonce.to_bytes(16, "big")
+        # Get the sender pubkey from the routing table
+        sender_pubkey = router.by_short_gid[send_id].pubkey
+        # Crete the encrypted message
+        enc_msg = EncryptedMessage(
+            send_pk=sender_pubkey,
+            recv_sk=config.node_secret_key,
+            encrypted_msg=self.payload[87 : 87 + enc_msg_len],
+        )
         logger.debug(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 
         # Now we check if the message is "for us" (can we decrypt the message)
         try:
-            (derived_preimage, derived_payment_hash, decrypted_msg,) = enc_msg.decrypt(
-                self.payment_hash
-            )
+            derived_preimage, derived_payment_hash, decrypted_msg = enc_msg.decrypt()
         # Decode failed, this is not for us
         except Exception:
-            logger.error(f"Could not decrypt encrypted message")
+            logger.exception(f"Could not decrypt encrypted message")
             # The encrypted message wasn't for us. We should store it so we can
             # re-attach on the way back out...
             config.key_sends[self.payment_hash] = enc_msg
@@ -365,7 +384,7 @@ class LightningMessage:
         # If we got something and we have a cancel_scope (because we're batching),
         # extend it a little
         if cancel_scope and to_mesh:
-            logger.debug(f"Extending cancel_scope by 3 seconds because we got a header")
+            # logger.debug(f"Extending cancel_scope by 3 seconds because we got a header")
             cancel_scope.deadline += 3
 
         # Bolt #8: 2-byte message length

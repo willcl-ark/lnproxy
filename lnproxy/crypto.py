@@ -7,7 +7,7 @@ from typing import Union
 
 from Crypto.Cipher import AES
 from coincurve import PrivateKey, PublicKey
-from ecies.utils import decapsulate, encapsulate, generate_key, hex2prv, hex2pub
+from ecies.utils import decapsulate, encapsulate, hex2prv, hex2pub
 
 AES_CIPHER_MODE = AES.MODE_GCM
 AES_KEY_BYTES_LEN = 32
@@ -15,13 +15,17 @@ AES_KEY_BYTES_LEN = 32
 __all__ = ["encrypt", "decrypt"]
 
 
-def encrypt(receiver_pk: Union[str, bytes], msg: bytes, nonce: bytes) -> bytes:
+def encrypt(
+    sender_privkey: str, receiver_pubkey: Union[str, bytes], msg: bytes, nonce: bytes,
+) -> bytes:
     """
     Encrypt with receiver's secp256k1 public key
 
     Parameters
     ----------
-    receiver_pk: Union[str, bytes]
+    sender_privkey: bytes
+        The senders secret key in byte form
+    receiver_pubkey: Union[str, bytes]
         Receiver's public key (hex str or bytes)
     msg: bytes
         Data to encrypt
@@ -33,26 +37,30 @@ def encrypt(receiver_pk: Union[str, bytes], msg: bytes, nonce: bytes) -> bytes:
     bytes
         Encrypted data
     """
-    ephemeral_key = generate_key()
-    if isinstance(receiver_pk, str):
-        receiver_pubkey = hex2pub(receiver_pk)
-    elif isinstance(receiver_pk, bytes):
-        receiver_pubkey = PublicKey(receiver_pk)
+    sender_privkey = hex2prv(sender_privkey)
+    if isinstance(receiver_pubkey, str):
+        receiver_pubkey = hex2pub(receiver_pubkey)
+    elif isinstance(receiver_pubkey, bytes):
+        receiver_pubkey = PublicKey(receiver_pubkey)
     else:
         raise TypeError("Invalid public key type")
 
-    aes_key = encapsulate(ephemeral_key, receiver_pubkey)
-    cipher_text = aes_encrypt(aes_key, msg, nonce)
-    return ephemeral_key.public_key.format(True) + cipher_text
+    shared_key = encapsulate(sender_privkey, receiver_pubkey)
+    cipher_text = aes_encrypt(shared_key, msg, nonce)
+    return cipher_text
 
 
-def decrypt(receiver_sk: Union[str, bytes], msg: bytes, nonce: bytes) -> bytes:
+def decrypt(
+    sender_pubkey: str, receiver_privkey: Union[str, bytes], msg: bytes, nonce: bytes,
+) -> bytes:
     """
     Decrypt with receiver's secp256k1 private key
 
     Parameters
     ----------
-    receiver_sk: Union[str, bytes]
+    sender_pubkey: bytes
+        The sender's public key
+    receiver_privkey: Union[str, bytes]
         Receiver's private key (hex str or bytes)
     msg: bytes
         Data to decrypt
@@ -64,19 +72,16 @@ def decrypt(receiver_sk: Union[str, bytes], msg: bytes, nonce: bytes) -> bytes:
     bytes
         Plain text
     """
-    if isinstance(receiver_sk, str):
-        private_key = hex2prv(receiver_sk)
-    elif isinstance(receiver_sk, bytes):
-        private_key = PrivateKey(receiver_sk)
+    sender_pubkey = hex2pub(sender_pubkey)
+    if isinstance(receiver_privkey, str):
+        private_key = hex2prv(receiver_privkey)
+    elif isinstance(receiver_privkey, bytes):
+        private_key = PrivateKey(receiver_privkey)
     else:
         raise TypeError("Invalid secret key type")
 
-    pubkey = msg[0:33]  # compressed pubkey's length is 33 bytes
-    encrypted = msg[33:]
-    ephemeral_public_key = PublicKey(pubkey)
-
-    aes_key = decapsulate(ephemeral_public_key, private_key)
-    return aes_decrypt(aes_key, encrypted, nonce)
+    shared_key = decapsulate(sender_pubkey, private_key)
+    return aes_decrypt(shared_key, msg, nonce)
 
 
 def aes_encrypt(key: bytes, plain_text: bytes, nonce: bytes) -> bytes:

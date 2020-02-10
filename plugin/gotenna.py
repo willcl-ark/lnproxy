@@ -58,6 +58,8 @@ def add_node(gid, pubkey, plugin=None):
     except Exception as e:
         logger.exception("Error with pubkey")
         return f"Error with pubkey: {e}"
+    # Create the DH shared key
+
     # Add to router
     _node = network.Node(int(gid), str(pubkey))
     # Check for dupes
@@ -120,10 +122,20 @@ def message(
     """Send a message via the mesh connection paid for using key-send (non-interactive)
     args: (goTenna) gid, msatoshi, msatoshi
     """
-    # Get the destination pubkey
-    dest_pubkey = network.router.lookup_pubkey(gid)
+    # Get the destination pubkey from the router
+    dest_pubkey = network.router.get_pubkey(gid)
+
+    # Get a unique "sender_id" which receiver can use to lookup sender pubkey
+    # sender_id will be 1 byte long as this allows 256 GID values, enough for now
+    sender_id = network.router.by_pubkey[config.node_info["id"]].short_gid.to_bytes(
+        1, "big"
+    )
+
     _message = EncryptedMessage(
-        gid=gid, plain_text=message_string, dest_pubkey=dest_pubkey,
+        send_sk=config.node_secret_key,
+        send_id=sender_id,
+        recv_pk=dest_pubkey,
+        plain_text=message_string,
     )
     try:
         _message.encrypt()
@@ -137,15 +149,13 @@ def message(
         logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
-    description = f"{uuid.uuid4().hex} encrypted message to {_message.dest_pubkey}"
+    description = f"{uuid.uuid4().hex} encrypted message to {_message.recv_pk}"
 
     # Store message for later.
     # The traffic proxy will add the encrypted message onto the outbound
-    # htlc_add_update message.
-    config.key_sends[_message.payment_hash.digest()] = _message
-    logger.debug(
-        f"Stored message in config.key_sends[{_message.payment_hash.digest()}]"
-    )
+    # htlc_add_update message after lookup using payment_hash.
+    config.key_sends[_message.payment_hash] = _message
+    logger.debug(f"Stored message in config.key_sends[{_message.payment_hash}]")
 
     # Get next peer in route
     # TODO: Improve routing here; tap into gotenna routing table.
@@ -163,9 +173,7 @@ def message(
     ]
     logger.info(f"Got route to {peer}, executing sendpay command.")
 
-    return config.rpc.sendpay(
-        route, _message.payment_hash.hexdigest(), description, amt_msat
-    )
+    return config.rpc.sendpay(route, _message.payment_hash.hex(), description, amt_msat)
 
 
 @gotenna_plugin.init()

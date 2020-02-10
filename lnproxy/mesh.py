@@ -222,7 +222,7 @@ class Connection:
         if evt.event_type == goTenna.driver.Event.MESSAGE:
             # stick it on the receive queue
             if self.is_plugin:
-                logger.debug(f"RCVD: {util.msg_hash(evt.message.payload._binary_data)}")
+                # logger.debug(f"RCVD: {util.msg_hash(evt.message.payload._binary_data)}")
                 # We put the whole message on the queue so we can extract GID data
                 trio.from_thread.run(self.from_mesh_send.send, evt.message)
             else:

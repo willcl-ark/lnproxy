@@ -14,13 +14,17 @@ class Node:
     """A Node in the routing table.
     """
 
-    def __init__(self, gid: int, pubkey: str, outbound=None, inbound=None):
+    def __init__(
+        self, gid: int, pubkey: str, outbound=None, inbound=None, shared_key=None
+    ):
         self.gid = gid
+        self.short_gid = gid % 256
         self.pubkey = pubkey
         self.outbound = outbound
         self.inbound = inbound
         # Node message header is GID as Big Endian 8 bytestring
-        self.header = self.gid.to_bytes(8, "big")
+        self.header = self.gid.to_bytes(1, "big")
+        self.shared_key = shared_key
 
     def __str__(self):
         return f"GID: {self.gid}, PUBKEY: [{self.pubkey[:4]}...{self.pubkey[-4:]}]"
@@ -47,6 +51,7 @@ class Router:
         self.nodes = []
         self.by_pubkey = {}
         self.by_gid = {}
+        self.by_short_gid = {}
 
     def __len__(self):
         return len(self.nodes)
@@ -66,6 +71,7 @@ class Router:
         self.nodes.append(node)
         self.by_pubkey[str(node.pubkey)] = node
         self.by_gid[int(node.gid)] = node
+        self.by_short_gid[node.short_gid] = node
 
     def remove(self, gid: int):
         """Remove a node from the router by gid or pubkey.
