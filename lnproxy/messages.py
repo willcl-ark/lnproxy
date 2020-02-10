@@ -322,7 +322,7 @@ class LightningMessage:
         self, header, body_len, body_len_mac, body, body_mac, to_mesh, return_stream
     ):
         self.header = bytes(header)
-        self.body_len = bytes(body_len)
+        self.body_len = body_len
         self.body_len_mac = bytes(body_len_mac)
         self.body = bytes(body)
         self.body_mac = bytes(body_mac)
@@ -334,15 +334,37 @@ class LightningMessage:
         # Grab the GID from the contextvar
         self.gid = util.gid_key.get()
 
+    def __str__(self):
+        return (
+            # f"header, {len(self.header)} bytes, {self.header},\n"
+            f"body_len, {self.body_len} bytes,\n"
+            f"body_len_mac, {len(self.body_mac)} bytes, {self.body_len_mac},\n"
+            f"to_mesh == {self.to_mesh},\n"
+            f"returned_msg: {self.returned_msg}"
+        )
+
+    @property
+    def returned_msg(self):
+        if self.to_mesh:
+            # We don't send the header MAC or body MAC in the mesh case to save space.
+            return self.header[0:2] + self.body
+        else:
+            return self.header + self.body + self.body_mac
+
     @classmethod
-    async def read(cls, stream, to_mesh: bool, return_stream, cancel_scope):
+    async def from_stream(cls, stream, to_mesh: bool, return_stream, cancel_scope):
         """Reads a full lightning message from a stream.
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
-        header = await util.receive_exactly(stream, config.MSG_HEADER)
+        if to_mesh:
+            header = await util.receive_exactly(stream, config.MSG_HEADER)
+        else:
+            header = await util.receive_exactly(stream, 2)
+            header += 16 * (bytes.fromhex("00"))
 
-        # If we got something and we have a cancel_scope, extend it a little
-        if cancel_scope:
+        # If we got something and we have a cancel_scope (because we're batching),
+        # extend it a little
+        if cancel_scope and to_mesh:
             logger.debug(f"Extending cancel_scope by 3 seconds because we got a header")
             cancel_scope.deadline += 3
 
@@ -350,16 +372,16 @@ class LightningMessage:
         body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]
 
         # Bolt #8: 16-byte MAC of the message length
-        body_len_mac = struct.unpack("16s", header[-16:])[0]
-        # body_len_mac = 16 * (bytes.fromhex("00"))
+        body_len_mac = header[2:18]
 
         # Bolt #8: Lightning message
         body = await util.receive_exactly(stream, body_len)
 
         # Bolt #8: 16 Byte MAC of the Lightning message
-        body_mac = await stream.receive_some(config.MSG_MAC)
-        # TODO: we can add a fake MAC on here saving 16 bytes
-        # body_mac = 16 * (bytes.fromhex("00"))
+        if to_mesh:
+            body_mac = await stream.receive_some(config.MSG_MAC)
+        else:
+            body_mac = 16 * (bytes.fromhex("00"))
 
         return cls(
             header, body_len, body_len_mac, body, body_mac, to_mesh, return_stream
@@ -407,13 +429,6 @@ class LightningMessage:
             logger.warning(f"Message code not found in ln_msg.codes: {self.msg_code}")
             raise UnknownMessage(f"Unknown message received, closing. {self.msg_code}")
 
-        logger.debug(
-            f"{direction} | "
-            f"{codes.get(self.msg_code):<27s} | "
-            f"{len(self.msg_payload):>4d}B | "
-            f"{hashlib.sha256(self.header + self.body + self.body_mac).hexdigest()}",
-        )
-
         # handle htlc_add_update specially
         if self.msg_code == config.ADD_UPDATE_HTLC:
             _htlc = AddUpdateHTLC(self.msg_payload, self.to_mesh)
@@ -424,6 +439,13 @@ class LightningMessage:
             _header += struct.pack(">16s", 16 * (bytes.fromhex("00")))
             self.header = _header
             self.body = _body
+
+        logger.debug(
+            f"{direction} | "
+            f"{codes.get(self.msg_code):<27s} | "
+            f"{len(self.msg_payload):>4d}B | "
+            f"{hashlib.sha256(self.header + self.body + self.body_mac).hexdigest()}",
+        )
 
         # If we get a ping, echo a pong right away!
         if self.msg_code == config.PING:

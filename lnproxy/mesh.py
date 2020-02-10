@@ -18,7 +18,7 @@ SPI_READY = 27
 
 logger = util.CustomAdapter(logging.getLogger(__name__), None)
 gotenna_logger = logging.getLogger("goTenna")
-gotenna_logger.setLevel(level=logging.DEBUG)
+gotenna_logger.setLevel(level=logging.WARNING)
 # Turn down this particularly noisy logger
 goTenna_device_l1ll111111_opy_logger = logging.getLogger(
     "goTenna.device.l1ll111111_opy_"
@@ -147,7 +147,7 @@ class Connection:
         # Extract the GID from the header
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
-        logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
+        # logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
         await self.send_private(to_gid, msg[8:], True)
 
     async def send_handler(self):
@@ -335,7 +335,6 @@ class Connection:
                         "error_details": captured_error_handler[0](details),
                         "status": "failed",
                     }
-                    # self.events.callback.put(result)
                     logger.error(result)
 
         return callback
@@ -485,7 +484,7 @@ class Connection:
                     )
 
             # This loop helps us overcome quota limitation in gotenna where it
-            # otherwise insta-fails if we are over quota. Will retry every 2 seconds for
+            # otherwise insta-fails if we are over quota. Will retry every 5 seconds for
             # 70 seconds. Quota is reset at 60s so this should always succeed unless
             # peer has disappeared.
             i = 0
@@ -507,7 +506,7 @@ class Connection:
                     f"Could not send message {payload} to GID {gid} in {i} tries"
                 )
                 return
-            logger.debug(f"SENT: {util.msg_hash(message)}")
+            # logger.debug(f"SENT: {util.msg_hash(message)}")
         except ValueError:
             logger.error("Message too long!")
             return

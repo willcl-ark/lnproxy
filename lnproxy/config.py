@@ -38,9 +38,8 @@ key_sends = {}
 
 # goTenna Mesh
 mesh_conn = None
-SEND_TIMES = []
 BATCH_DELAY = 3
-UBER = False
+CHUNK_SIZE = 205
 # Modify this sdk_token value
 sdk_token = None
 # Only for importing a debugging SDK token
@@ -50,7 +49,6 @@ except ModuleNotFoundError:
     pass
 else:
     sdk_token = priv.sdk_token
-    UBER = True
 geo_region = 2
 
 # TODO: These can be calculated on-the-fly from getroute
