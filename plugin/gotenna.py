@@ -131,9 +131,9 @@ def message(
     dest_pubkey = network.router.get_pubkey(gid)
 
     # Get a unique "sender_id" which receiver can use to lookup sender pubkey
-    # sender_id will be 1 byte long as this allows 256 GID values, enough for now
-    sender_id = network.router.by_pubkey[config.node_info["id"]].short_gid.to_bytes(
-        1, "big"
+    # sender_id will be 1 byte long as this allows 256 GID values; enough for now
+    sender_id = (int(plugin.get_option("gid")) % 256).to_bytes(
+        config.SEND_ID_LEN, "big"
     )
 
     _message = EncryptedMessage(
@@ -156,7 +156,7 @@ def message(
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
     description = f"{uuid.uuid4().hex} encrypted message to {_message.recv_pk}"
 
-    # Store message for later.
+    # Store message object for later.
     # The traffic proxy will add the encrypted message onto the outbound
     # htlc_add_update message after lookup using payment_hash.
     config.key_sends[_message.payment_hash] = _message

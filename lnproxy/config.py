@@ -56,6 +56,7 @@ except ModuleNotFoundError:
 else:
     sdk_token = priv.sdk_token
 geo_region = 2
+SEND_ID_LEN = 1
 # --------------------------------------------------------------------------------------
 """Crypto
 """

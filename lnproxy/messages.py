@@ -112,14 +112,13 @@ class EncryptedMessage:
         self.payment_hash = hashlib.sha256(self.preimage).digest()
         # Try to encrypt, first prepend the send_id
         try:
-            self.encrypted_msg = self.send_id
             self.encrypted_msg += crypto.encrypt(
                 self.send_sk, self.recv_pk, self.plain_text.encode("utf-8"), self.nonce
             )
         except TypeError:
             raise
         logger.debug(f"Encrypted message: {repr(self)}")
-        return True
+        return
 
     def decrypt(self):
         """Attempt decryption of the ciphertext using own privkey and sender pubkey.
@@ -181,14 +180,18 @@ class AddUpdateHTLC:
 
     def get_encrypted_msg(self):
         """Looks up and returns an encrypted message.
-            """
+        """
         msg = bytearray()
+        # First we add the short send_id
+        msg += config.key_sends[self.payment_hash].send_id
+        # Then we add the encrypted message itself
         msg += config.key_sends[self.payment_hash].encrypted_msg
+        # Finally generate a header for the length
         header = struct.pack(config.be_u16, len(msg))
+        self.encrypted_msg = header + bytes(msg)
         logger.debug(
             f"Generated header for encrypted message\nheader: {header.hex()}\nmsg {msg.hex()}"
         )
-        self.encrypted_msg = header + bytes(msg)
 
     def handle_inbound(self):
         # Generate a new onion as there won't be one from the mesh
@@ -249,18 +252,21 @@ class AddUpdateHTLC:
         return self.handle_inbound()
 
     def try_decode(self):
-        # Get the length of it from the first 2 bytes
+        # Get the length of it from the header (2 bytes)
         enc_msg_len = struct.unpack(config.be_u16, self.payload[84:86])[0]
-        # The first byte is the short sender_id
-        send_id = int.from_bytes(self.payload[86:87], "big")
-        logger.debug(f"Encoded message length: {enc_msg_len}")
+        logger.debug(f"Encrypted message length: {enc_msg_len}")
+        # The next byte is the short sender_id
+        send_id = self.payload[86 : 86 + config.SEND_ID_LEN]
+        logger.debug(f"Encrypted message send_id: {send_id}")
         # Get the sender pubkey from the routing table
-        sender_pubkey = router.by_short_gid[send_id].pubkey
-        # Crete the encrypted message
+        sender_pubkey = router.by_short_gid[int.from_bytes(send_id, "big")].pubkey
+        logger.debug(f"Encrypted message sender_pubkey: {sender_pubkey}")
+        # Create the encrypted message
         enc_msg = EncryptedMessage(
             send_pk=sender_pubkey,
+            send_id=send_id,
             recv_sk=config.node_secret_key,
-            encrypted_msg=self.payload[87 : 87 + enc_msg_len],
+            encrypted_msg=self.payload[87 : 87 + enc_msg_len - config.SEND_ID_LEN],
         )
         logger.debug(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 
@@ -310,7 +316,8 @@ class AddUpdateHTLC:
                 self.payload = self.payload[0:84]
                 # Do we have an encrypted message for it:
                 try:
-                    enc_msg = config.key_sends[self.payment_hash].encrypted_msg
+                    enc_msg = config.key_sends[self.payment_hash].send_id
+                    enc_msg += config.key_sends[self.payment_hash].encrypted_msg
                 except LookupError:
                     pass
                 # If we do, create the header and append it and the message to payload
