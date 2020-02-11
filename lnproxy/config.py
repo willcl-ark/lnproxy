@@ -45,7 +45,7 @@ mesh_conn = None
 BATCH_DELAY = 2
 # 200 appears somewhat magic, goTenna max is 235 bytes, but sometimes during testing
 # these appear to fail, and 200 seems to be the most stable :)
-CHUNK_SIZE = 200
+CHUNK_SIZE = 210
 # Modify this sdk_token value
 sdk_token = None
 # Only for importing a debugging SDK token
