@@ -11,7 +11,7 @@ import lnproxy.onion as onion
 import lnproxy.util as util
 
 
-logger = util.CustomAdapter(logging.getLogger(__name__), None)
+logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 router = network.router
 
 
@@ -51,6 +51,8 @@ class UnknownMessage(Exception):
     """An Exception class to raise if we get an unknown message type.
     Usually requires that the entire connection be reset.
     """
+
+    pass
 
 
 class EncryptedMessage:

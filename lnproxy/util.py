@@ -26,7 +26,7 @@ class CustomAdapter(logging.LoggerAdapter):
             return f"{msg}", kwargs
 
 
-logger = CustomAdapter(logging.getLogger(__name__), None)
+logger = CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 
 
 def unlink_socket(address: str):

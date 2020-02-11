@@ -9,7 +9,7 @@ import lnproxy.network as network
 import lnproxy.util as util
 
 
-logger = util.CustomAdapter(logging.getLogger(__name__), None)
+logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 router = network.router
 
 
@@ -91,10 +91,10 @@ class Proxy:
                 await write(_msg)
                 self.count_to_mesh += 1
             logger.debug(
-                f"TO_MESH  : "
+                f"Sent | "
                 f"read: {i}, "
                 f"sent: {self.count_to_mesh}, "
-                f"total_size: {util.natural_size(self.bytes_to_mesh)}"
+                f"total_size: {self.bytes_to_mesh}B"
             )
 
     async def _from_mesh(self, read, write, init: bool):
@@ -111,10 +111,10 @@ class Proxy:
             i += 1
             self.bytes_from_mesh += len(message)
             logger.debug(
-                f"FROM_MESH: "
+                f"Rcvd | "
                 f"read: {i}, "
                 f"sent: {i}, "
-                f"total_size: {util.natural_size(self.bytes_from_mesh)}"
+                f"total_size: {self.bytes_from_mesh}B"
             )
 
     async def start(self):

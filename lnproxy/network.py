@@ -7,7 +7,7 @@ import lnproxy.config as config
 from lnproxy.util import CustomAdapter
 
 
-logger = CustomAdapter(logging.getLogger(__name__), None)
+logger = CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 
 
 class Node:
@@ -84,7 +84,7 @@ class Router:
                 return
         raise LookupError(f"GID {gid} not found in Router")
 
-    def lookup_pubkey(self, gid: int):
+    def get_pubkey(self, gid: int):
         """Returns pubkey of first GID matched in self.nodes.
         """
         try:
@@ -93,7 +93,7 @@ class Router:
             print(self.by_gid)
             raise LookupError(f"GID {gid} not found in Router for lookup_pubkey.")
 
-    def lookup_gid(self, pubkey: str):
+    def get_gid(self, pubkey: str):
         """Returns GID of first pubkey matched in self.nodes.
         """
         return self.by_pubkey[pubkey].gid

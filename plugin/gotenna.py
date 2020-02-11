@@ -17,7 +17,10 @@ from lnproxy.pk_from_hsm import get_privkey
 from lnproxy.proxy import serve_outbound
 
 gotenna_plugin = lightning.Plugin()
-logging.basicConfig(level=logging.DEBUG)
+ch = logging.StreamHandler()
+formatter = logging.Formatter("%(levelname)6s %(message)s")
+ch.setFormatter(formatter)
+logging.basicConfig(level=logging.DEBUG, handlers=[ch])
 logger = logging.getLogger("plugin")
 router = network.router
 
@@ -50,9 +53,10 @@ def add_node(gid, pubkey, plugin=None):
     arg: gid: integer within valid goTenna GID range
     arg: pubkey: a node's lightning pubkey
     """
+    _gid = int(gid)
     # Check that GID and pubkey are valid
-    if not 0 <= int(gid) <= GID_MAX:
-        return f"GID {gid} not in range 0 <= n <= {GID_MAX}"
+    if not 0 <= _gid <= GID_MAX:
+        return f"GID {_gid} not in range 0 <= n <= {GID_MAX}"
     try:
         _pubkey = PublicKey(pubkey=bytes.fromhex(pubkey), raw=True)
     except Exception as e:
@@ -61,17 +65,17 @@ def add_node(gid, pubkey, plugin=None):
     # Create the DH shared key
 
     # Add to router
-    _node = network.Node(int(gid), str(pubkey))
+    _node = network.Node(_gid, str(pubkey))
     # Check for dupes
-    if gid in router:
+    if _gid in router:
         return (
-            f"GID {gid} already in router, remove before adding again: "
-            f"{router.get_node(gid)}"
+            f"GID {_gid} already in router, remove before adding again: "
+            f"{router.get_node(_gid)}"
         )
     elif pubkey in router:
         return (
             f"Pubkey {pubkey} already in router, remove before adding again: "
-            f"{router.get_node(router.lookup_gid(pubkey))}"
+            f"{router.get_node(router.get_gid(pubkey))}"
         )
     else:
         router.add(_node)
@@ -96,16 +100,17 @@ def remove_node(gid, plugin=None):
 def proxy_connect(gid, plugin=None):
     """Connect to a remote node via goTenna mesh proxy.
     """
+    _gid = int(gid)
     try:
-        pubkey = router.lookup_pubkey(gid)
+        pubkey = router.get_pubkey(_gid)
     except LookupError as e:
-        return f"Could not find GID {gid} in router, try adding first.\n{e}"
-    logging.debug(f"proxy-connect to gid {gid} via goTenna mesh connection")
+        return f"Could not find GID {_gid} in router, try adding first.\n{e}"
+    logging.debug(f"proxy-connect to gid {_gid} via goTenna mesh connection")
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid4().hex}"
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
-    trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", gid)
+    trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", _gid)
     # Confirm the socket is created and listening.
     while not pathlib.Path(listen_addr).is_socket():
         time.sleep(0.1)

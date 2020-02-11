@@ -16,9 +16,9 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-logger = util.CustomAdapter(logging.getLogger(__name__), None)
+logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 gotenna_logger = logging.getLogger("goTenna")
-gotenna_logger.setLevel(level=logging.WARNING)
+gotenna_logger.setLevel(level=logging.DEBUG)
 # Turn down this particularly noisy logger
 goTenna_device_l1ll111111_opy_logger = logging.getLogger(
     "goTenna.device.l1ll111111_opy_"
@@ -77,7 +77,7 @@ class Connection:
             logger.debug("goTenna in C-Lightning plugin mode")
             while not config.node_info and len(router) < 3:
                 time.sleep(1)
-            self.gid = router.lookup_gid(config.node_info["id"])
+            self.gid = router.get_gid(config.node_info["id"])
             self.nursery = nursery
             self.geo_region = config.geo_region
             self.sdk_token = config.sdk_token
@@ -157,6 +157,8 @@ class Connection:
         try:
             async for msg in self.to_mesh_recv:
                 await self.lookup_and_send(msg)
+                # This sleep stop us overloading the api_thread during large bursts
+                await trio.sleep(2)
         except Exception:
             logger.exception("Exception in send_handler")
             raise
@@ -452,7 +454,7 @@ class Connection:
         """ Send a private message to a contact
         GID is the GID to send the private message to.
         """
-        # logger.debug(f"Sending message {message.hex()} to gid {gid}. Binary={binary}")
+        logger.debug(f"Sending {len(message)}B message to gid {gid}. Binary={binary}")
         _gid, rest = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not self.api_thread.connected:
             logger.error("Must connect first")

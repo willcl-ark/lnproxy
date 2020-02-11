@@ -1,15 +1,17 @@
 import pathlib
 
-
-# BigSize struct formatting codes
+# --------------------------------------------------------------------------------------
+"""BigSize struct formatting codes
+"""
 be_u8: str = ">B"
 be_u16: str = ">H"
 be_u32: str = ">I"
 be_u64: str = ">Q"
 le_32b: str = "<32s"
 le_onion: str = "<1366s"
-
-# Lightning message size constants
+# --------------------------------------------------------------------------------------
+"""Lightning message size constants
+"""
 ADD_UPDATE_HTLC: int = 128
 PING = 18
 PONG = 19
@@ -20,26 +22,30 @@ MSG_HEADER: int = MSG_LEN + MSG_LEN_MAC
 MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
-
-# System-agnostic home-path generator
+# --------------------------------------------------------------------------------------
+"""Onion tool path
+"""
 home = str(pathlib.Path.home())
-
-# Onion tool path
 ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
-
-# Plugin
+# --------------------------------------------------------------------------------------
+"""Plugin
+"""
 rpc = None
-
-# Trio
+# --------------------------------------------------------------------------------------
+"""Trio
+"""
 nursery = None
 node_info = None
 node_secret_key = None
 key_sends = {}
-
-# goTenna Mesh
+# --------------------------------------------------------------------------------------
+"""goTenna Mesh
+"""
 mesh_conn = None
-BATCH_DELAY = 3
-CHUNK_SIZE = 205
+BATCH_DELAY = 2
+# 200 appears somewhat magic, goTenna max is 235 bytes, but sometimes during testing
+# these appear to fail, and 200 seems to be the most stable :)
+CHUNK_SIZE = 200
 # Modify this sdk_token value
 sdk_token = None
 # Only for importing a debugging SDK token
