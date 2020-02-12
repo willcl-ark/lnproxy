@@ -7,7 +7,7 @@ import lnproxy.config as config
 from lnproxy.util import CustomAdapter
 
 
-logger = CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
+logger = CustomAdapter(logging.getLogger("network"), None)
 
 
 class Node:

@@ -9,7 +9,7 @@ import lnproxy.network as network
 import lnproxy.util as util
 
 
-logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
+logger = util.CustomAdapter(logging.getLogger("proxy"), None)
 router = network.router
 
 
@@ -61,7 +61,7 @@ class Proxy:
         Will try to batch messages.
         Should not be called directly, instead use start().
         """
-        logger.debug(f"Starting proxy to_mesh, initiator={initiator}")
+        logger.info(f"Starting proxy to_mesh, initiator={initiator}")
         i = 0
         hs_acts = 2 if initiator else 1
         while True:
@@ -81,7 +81,7 @@ class Proxy:
                     i += 1
                     batched += 1
             if batched:
-                logger.debug(f"Batched {batched + 1} messages")
+                logger.info(f"Batched {batched + 1} messages")
             self.bytes_to_mesh += len(message)
 
             # Chunk the message and send them to the mesh
@@ -104,7 +104,7 @@ class Proxy:
         (the mesh "queue") or a trio.SocketStream.
         Should not be called directly, instead use start().
         """
-        logger.debug(f"Starting proxy from_mesh, initiator={init}")
+        logger.info(f"Starting proxy from_mesh, initiator={init}")
         i = 0
         hs_acts = 2 if init else 1
         while True:
@@ -146,7 +146,7 @@ class Proxy:
             router.cleanup(self.gid)
             with trio.fail_after(2):
                 await self.stream.aclose()
-            logger.debug(f"Proxy for GID {self.gid} exited")
+            logger.warning(f"Proxy for GID {self.gid} exited")
 
 
 async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
@@ -154,8 +154,6 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     Will open a new connection to local C-Lightning node and then proxy the connections.
     """
     logger.info(f"Handling new incoming connection from GID: {gid}")
-    # TODO: is this accounted for?
-    # Add it to the list of handle_inbounds running
     # First connect to our local C-Lightning node.
     stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
     logger.debug("Connection made to local C-Lightning node")

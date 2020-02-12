@@ -20,13 +20,13 @@ class CustomAdapter(logging.LoggerAdapter):
 
     def process(self, msg, kwargs):
         try:
-            return f"{gid_key.get()} | {msg}", kwargs
+            return f"GID:{gid_key.get()} | {msg}", kwargs
         # contextvar doesn't exist
         except (LookupError, NameError):
             return f"{msg}", kwargs
 
 
-logger = CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
+logger = CustomAdapter(logging.getLogger("util"), None)
 
 
 def unlink_socket(address: str):

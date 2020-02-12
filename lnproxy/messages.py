@@ -11,7 +11,7 @@ import lnproxy.onion as onion
 import lnproxy.util as util
 
 
-logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
+logger = util.CustomAdapter(logging.getLogger("msg"), None)
 router = network.router
 send_id_len = config.user["gotenna"].getint("SEND_ID_LEN")
 
@@ -469,11 +469,10 @@ class LightningMessage:
             self.header = _header
             self.body = _body
 
-        logger.debug(
+        logger.info(
             f"{direction} | "
             f"{codes.get(self.msg_code):<27s} | "
             f"{len(self.msg_payload):>4d}B | "
-            f"{hashlib.sha256(self.header + self.body + self.body_mac).hexdigest()}",
         )
 
         # If we get a ping, echo a pong right away!

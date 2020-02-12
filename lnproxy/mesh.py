@@ -16,14 +16,11 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
-gotenna_logger = logging.getLogger("goTenna")
-gotenna_logger.setLevel(level=logging.DEBUG)
-# Turn down this particularly noisy logger
-goTenna_device_l1ll111111_opy_logger = logging.getLogger(
-    "goTenna.device.l1ll111111_opy_"
-)
-goTenna_device_l1ll111111_opy_logger.setLevel(level=logging.WARNING)
+logger = util.CustomAdapter(logging.getLogger("mesh"), None)
+logging.getLogger("goTenna").setLevel(level=logging.INFO)
+logging.getLogger("goTenna.driver").setLevel(level=logging.WARNING)
+logging.getLogger("goTenna.device").setLevel(level=logging.WARNING)
+logging.getLogger("goTenna.pcb_connection").setLevel(level=logging.WARNING)
 router = network.router
 
 
@@ -346,7 +343,7 @@ class Connection:
         GID should be a 15-digit numerical GID.
         """
         if self.api_thread.connected:
-            logger.info("Must not already be connected when setting GID")
+            logger.error("Must not already be connected when setting GID")
             return
         (_gid, _) = self._parse_gid(gid, goTenna.settings.GID.PRIVATE)
         if not _gid:

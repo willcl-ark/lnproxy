@@ -15,7 +15,7 @@ import lightning
 from lnproxy.util import CustomAdapter
 
 
-logger = CustomAdapter(logging.getLogger(__name__), None)
+logger = CustomAdapter(logging.getLogger("pkhsm"), None)
 nodes = [0, 1, 2]
 
 

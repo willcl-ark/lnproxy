@@ -17,10 +17,11 @@ from lnproxy.pk_from_hsm import get_privkey
 from lnproxy.proxy import serve_outbound
 
 gotenna_plugin = lightning.Plugin()
-ch = logging.StreamHandler()
-formatter = logging.Formatter("%(levelname)6s %(message)s")
-ch.setFormatter(formatter)
-logging.basicConfig(level=logging.DEBUG, handlers=[ch])
+handler = logging.StreamHandler()
+bf = logging.Formatter("%(name)6s | %(levelname)8s | %(message)s")
+
+handler.setFormatter(bf)
+logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 logger = logging.getLogger("plugin")
 router = network.router
 send_id_len = config.user["gotenna"].getint("SEND_ID_LEN")
