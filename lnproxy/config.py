@@ -6,7 +6,9 @@ import configparser
 import os
 
 user = configparser.ConfigParser()
-config_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "config.ini")
+config_path = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
+)
 user.read(config_path)
 
 # --------------------------------------------------------------------------------------
