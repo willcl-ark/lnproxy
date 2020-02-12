@@ -58,7 +58,7 @@ Testing currently uses 4 terminal windows, these could also be screen/tmux sessi
 Lnproxy is run by C-Lightning as a plugin, and we need to tell C-Lightning how to find it. Let's export to the shell $PATH_TO_BITCOIN, which should point to the Bitcoin datadir for your OS and $PLUGIN_PATH which should point to lnproxy/plugin/gotenna.py file:
 
     # e.g. on OSX you might do
-    export PATH_TO_BITCOIN="~/Library/Application\ Support/Bitcoin"
+    export PATH_TO_BITCOIN="/Users/$USER/Library/Application Support/Bitcoin"
     export PLUGIN_PATH="/Users/$USER/src/lnproxy/plugin/gotenna.py"
     
 Change to the C-Lightning directory and source the script:
