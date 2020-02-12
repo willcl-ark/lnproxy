@@ -69,7 +69,21 @@ Change to the C-Lightning directory and source the script:
 
 You will see printed a list of available commands for later reference. Of note you should remember that it is possible to shutdown all three nodes and bitcoind from a single command, `stop_ln` and cleanup everything with `cleanup_ln`.
 
-We can now start all 3 lightning nodes with a single command:
+
+## Quick run
+
+Using the helper functions in the c-lightning/contrib/startup_script.sh let you get set up faster. Run in approximately this sequence as necessary:
+
+    start_ln
+    connect_ln
+    channel_ln
+    
+After these commands have completed, you can move right onto the [payments](#payments) or [spontaneous sends](#spontaneous-sends) sections below to start making payments.
+
+
+## Command-by-command
+
+First, we start all 3 lightning nodes with a single helper command:
 
     start_ln
     
@@ -108,7 +122,17 @@ This will connect the three nodes via the proxies, you should see returned two '
     # Generate a few blocks to activate the channels
     bt-cli generatetoaddress 6 $(bt-cli getnewaddress "" bech32)
     
-If successful, you will see the channel open transaction IDs and also 6 blocks generated to confirm the channels. At this stage, we can switch to the proxy windows and check for errors and also to see which messages have been exchanged between the nodes. If all looks good, we can try to me a payment:
+If successful, you will see the channel open transaction IDs and also 6 blocks generated to confirm the channels. At this stage, we can switch to the proxy windows and check for errors and also to see which messages have been exchanged between the nodes. We need to wait for `channel_update` to be exchanged between all channels before we can make a payment. 
+
+Whilst we wait for that, we will set the channel fees for all nodes to zero for testing. We use the helper function provided in the c-lightning/contrib/startup_script.sh for this:
+
+    fees_ln 0 0
+    
+This will recursively set fees on all channels in all directions to zero.
+
+### Payments
+
+Hopefully by now we have send the `channel_update` messages for the channels, if you have, you can try a simple single hop pay:
 
     l1-cli pay $(l2-cli invoice 500000 $(openssl rand -hex 12) $(openssl rand -hex 12) | jq -r '.bolt11')
     l2-cli pay $(l3-cli invoice 500000 $(openssl rand -hex 12) $(openssl rand -hex 12) | jq -r '.bolt11')
@@ -119,19 +143,24 @@ However if you try to pay l3 from l1 using the following you will receive an err
 
     l1-cli pay $(l3-cli invoice 500000 $(openssl rand -hex 12) $(openssl rand -hex 12) | jq -r '.bolt11')
 
+### Spontaneous sends
 
-To attempt a 3-hop mesh payment, run the python script `sendpay.py` found in lnproxy/scripts/sendpay.py.
-This generates an invoice from l3-cli and passes it out of band to l1-cli. However, it demonstrates that l1 can pay l3 even though C-Lightning doesn't know the whole route (it only knows about it's channel to l2). L2 will check the HTLC, find that it's not the final recipient and forward it on to someone _they_ know about, l3, who knows the preimage.
-
-To use the plugin "message" function, use the following (with connected peers and opened channels):
+To attempt a "spontaneous send" mesh payment with encrypted message over one or multiple hops, use the "message" command added to C-Lightning by the plugin:
 
     # see "l1-cli help message" for help.
-    l1-cli message $(l2-cli gid) "Hello, world" 100000
+    # Single hop version
+    l1-cli waitsendpay $(l1-cli message $(l2-cli gid) $(openssl rand -hex 12) 100000 | jq .payment_hash)
 
 or
-
-    l1-cli message $(l3-cli gid) "Hello, world2" 100000
+    
+    # Double hop version
+    l1-cli waitsendpay $(l1-cli message $(l3-cli gid) $(openssl rand -hex 12) 100000 | jq .payment_hash)
     
 The "message" RPC implements a keysend-like functionality: we know about the recipient in our (plugin) routing table, even though C-Lightning doesn't know about them (no gossip exchanged via l2). This means we can send them a message encrypted with their pubkey (using ECIES where nonce=payment_hash[0:16]) and where recipient can decrypt the preimage (sha256(decrypted_message).digest()).
 
 It's this plugin routing table that we want to fully integrate with the underlying goTenna routing table in future work.
+
+
+
+    
+    
