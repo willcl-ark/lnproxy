@@ -393,8 +393,8 @@ class LightningMessage:
         # If we got something and we have a cancel_scope (because we're batching),
         # extend it a little
         if cancel_scope and to_mesh:
-            # logger.debug(f"Extending cancel_scope by 3 seconds because we got a header")
-            cancel_scope.deadline += 3
+            logger.debug(f"Extending cancel_scope by 1 second because we got a header")
+            cancel_scope.deadline += 1
 
         # Bolt #8: 2-byte message length
         body_len = struct.unpack(">H", header[: config.MSG_LEN])[0]

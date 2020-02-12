@@ -158,7 +158,7 @@ class Connection:
             async for msg in self.to_mesh_recv:
                 await self.lookup_and_send(msg)
                 # This sleep stop us overloading the api_thread during large bursts
-                await trio.sleep(2)
+                await trio.sleep(1)
         except Exception:
             logger.exception("Exception in send_handler")
             raise
