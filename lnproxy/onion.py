@@ -78,7 +78,7 @@ def generate_new(
         )
         onion_tool = subprocess.run(
             [
-                config.ONION_TOOL,
+                config.user["onion"]["ONION_TOOL"],
                 "generate",
                 f"{my_pubkey}/{first_hop_data}",
                 f"{next_pubkey}/{next_hop_data}",
@@ -94,7 +94,7 @@ def generate_new(
         first_hop_data = encode_hop_data(first_hop_id, amount_msat, cltv_expiry).hex()
         onion_tool = subprocess.run(
             [
-                config.ONION_TOOL,
+                config.user["onion"]["ONION_TOOL"],
                 "generate",
                 f"{my_pubkey}/{first_hop_data}",
                 "--assoc-data",

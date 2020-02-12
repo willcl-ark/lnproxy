@@ -23,7 +23,7 @@ ch.setFormatter(formatter)
 logging.basicConfig(level=logging.DEBUG, handlers=[ch])
 logger = logging.getLogger("plugin")
 router = network.router
-
+send_id_len = config.user["gotenna"].getint("SEND_ID_LEN")
 
 gotenna_plugin.add_option(
     name="gid",
@@ -53,8 +53,8 @@ def add_node(gid, pubkey, plugin=None):
     arg: gid: integer within valid goTenna GID range
     arg: pubkey: a node's lightning pubkey
     """
-    _gid = int(gid)
     # Check that GID and pubkey are valid
+    _gid = int(gid)
     if not 0 <= _gid <= GID_MAX:
         return f"GID {_gid} not in range 0 <= n <= {GID_MAX}"
     try:
@@ -62,10 +62,10 @@ def add_node(gid, pubkey, plugin=None):
     except Exception as e:
         logger.exception("Error with pubkey")
         return f"Error with pubkey: {e}"
-    # Create the DH shared key
 
     # Add to router
     _node = network.Node(_gid, str(pubkey))
+
     # Check for dupes
     if _gid in router:
         return (
@@ -106,14 +106,18 @@ def proxy_connect(gid, plugin=None):
     except LookupError as e:
         return f"Could not find GID {_gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {_gid} via goTenna mesh connection")
+
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid4().hex}"
+
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
     trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", _gid)
+
     # Confirm the socket is created and listening.
     while not pathlib.Path(listen_addr).is_socket():
         time.sleep(0.1)
+
     # Instruct C-Lightning RPC to connect to remote via the socket after it has been
     # established.
     # TODO: Use trio to add a timeout for the connect?
@@ -132,9 +136,7 @@ def message(
 
     # Get a unique "sender_id" which receiver can use to lookup sender pubkey
     # sender_id will be 1 byte long as this allows 256 GID values; enough for now
-    sender_id = (int(plugin.get_option("gid")) % 256).to_bytes(
-        config.SEND_ID_LEN, "big"
-    )
+    sender_id = (int(plugin.get_option("gid")) % 256).to_bytes(send_id_len, "big")
 
     _message = EncryptedMessage(
         send_sk=config.node_secret_key,
@@ -185,14 +187,18 @@ def message(
 # Parameters used by gotenna_plugin() internally
 def init(options, configuration, plugin):
     logger.info("Starting goTenna plugin")
+
     # Store the RPC in config to be accessible by all modules.
     config.rpc = plugin.rpc
+
     # Get the local lightning node info to avoid multiple lookups.
     config.node_info = plugin.rpc.getinfo()
     logger.debug(config.node_info)
+
     # Add ourselves to the routing table
     router.add(network.Node(int(plugin.get_option("gid")), str(config.node_info["id"])))
     logger.debug(router)
+
     # ======= WARNING =======
     # Store our node private key for message decryption
     config.node_secret_key = str(
@@ -200,8 +206,10 @@ def init(options, configuration, plugin):
     )
     logger.debug(f"Node private key: {config.node_secret_key}")
     # ===== END WARNING =====
+
     # Suppress all C-Lightning gossip messages for newly-connected peers.
     plugin.rpc.dev_suppress_gossip()
+
     # Show the user the new RPCs available
     commands = list(plugin.methods.keys())
     commands.remove("init")
@@ -219,8 +227,10 @@ async def main():
         # We run the plugin itself in a synchronous thread so trio.run() maintains
         # overall control of the app.
         config.nursery.start_soon(trio.to_thread.run_sync, gotenna_plugin.run)
+
         # Start the goTenna connection daemon.
         config.nursery.start_soon(connection_daemon)
+
     logger.info("goTenna plugin exited.")
 
 

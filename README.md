@@ -35,12 +35,20 @@ Clone and setup:
     pip install --upgrade pip
     pip install -r requirements.txt
     
-Next we add our goTenna SDK token and ONION_TOOL path to the config file:
+Next we add our goTenna SDK token and ONION_TOOL path to the lnproxy/config.ini file:
 
-    vim lnproxy/config.py
-    # Add sdk_token as a string in goTenna sub-section
-    # Modify ONION_TOOL path as appropriate to point to your lightning/devtools/onion 
-        # binary file
+1) Add sdk_token as a string in goTenna section
+2) Modify ONION_TOOL path as appropriate to point to your lightning/devtools/onion 
+   binary file, e.g:
+
+
+    vim lnproxy/config.ini
+        
+    [goTenna Mesh]
+    sdk_token = your_sdk_token_here
+    
+    [Onion tool path]
+    ONION_TOOL = path_to/your_onion/binary_file
     
     
 ## Regtest Testing

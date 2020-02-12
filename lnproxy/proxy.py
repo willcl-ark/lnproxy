@@ -73,7 +73,7 @@ class Proxy:
             i += 1
 
             # After we've got one, check to see if more can be batched
-            with trio.move_on_after(config.BATCH_DELAY) as cs:
+            with trio.move_on_after(config.user["gotenna"].getint("BATCH_DELAY")) as cs:
                 while True:
                     message += await self.read_message(
                         read, i, hs_acts, initiator, True, cs
@@ -86,7 +86,9 @@ class Proxy:
 
             # Chunk the message and send them to the mesh
             for _msg in util.chunk_to_list(
-                bytes(message), config.CHUNK_SIZE, self.gid.to_bytes(8, "big")
+                bytes(message),
+                config.user["gotenna"].getint("CHUNK_SIZE"),
+                self.gid.to_bytes(8, "big"),
             ):
                 await write(_msg)
                 self.count_to_mesh += 1

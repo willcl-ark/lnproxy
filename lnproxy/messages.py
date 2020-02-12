@@ -13,6 +13,7 @@ import lnproxy.util as util
 
 logger = util.CustomAdapter(logging.getLogger(f"{__name__:<20}"), None)
 router = network.router
+send_id_len = config.user["gotenna"].getint("SEND_ID_LEN")
 
 
 codes = {
@@ -256,7 +257,7 @@ class AddUpdateHTLC:
         enc_msg_len = struct.unpack(config.be_u16, self.payload[84:86])[0]
         logger.debug(f"Encrypted message length: {enc_msg_len}")
         # The next byte is the short sender_id
-        send_id = self.payload[86 : 86 + config.SEND_ID_LEN]
+        send_id = self.payload[86 : 86 + send_id_len]
         logger.debug(f"Encrypted message send_id: {send_id}")
         # Get the sender pubkey from the routing table
         sender_pubkey = router.by_short_gid[int.from_bytes(send_id, "big")].pubkey
@@ -266,7 +267,7 @@ class AddUpdateHTLC:
             send_pk=sender_pubkey,
             send_id=send_id,
             recv_sk=config.node_secret_key,
-            encrypted_msg=self.payload[87 : 87 + enc_msg_len - config.SEND_ID_LEN],
+            encrypted_msg=self.payload[87 : 87 + enc_msg_len - send_id_len],
         )
         logger.debug(f"Encrypted message: {enc_msg.encrypted_msg.hex()}")
 

@@ -1,4 +1,13 @@
-import pathlib
+"""USER VALUES SHOULD BE CHANGED IN CONFIG.INI FILE, NOT IN HERE
+"""
+
+# User config import
+import configparser
+import os
+
+user = configparser.ConfigParser()
+config_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "config.ini")
+user.read(config_path)
 
 # --------------------------------------------------------------------------------------
 """BigSize struct formatting codes
@@ -23,11 +32,6 @@ MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 # --------------------------------------------------------------------------------------
-"""Onion tool path
-"""
-home = str(pathlib.Path.home())
-ONION_TOOL: str = f"{home}/src/lightning/devtools/onion"
-# --------------------------------------------------------------------------------------
 """Plugin
 """
 rpc = None
@@ -39,24 +43,9 @@ node_info = None
 node_secret_key = None
 key_sends = {}
 # --------------------------------------------------------------------------------------
-"""goTenna Mesh
+"""goTenna
 """
 mesh_conn = None
-BATCH_DELAY = 2
-# 200 appears somewhat magic, goTenna max is 235 bytes, but sometimes during testing
-# these appear to fail, and 200 seems to be the most stable :)
-CHUNK_SIZE = 210
-# Modify this sdk_token value
-sdk_token = None
-# Only for importing a debugging SDK token
-try:
-    import lnproxy.private as priv
-except ModuleNotFoundError:
-    pass
-else:
-    sdk_token = priv.sdk_token
-geo_region = 2
-SEND_ID_LEN = 1
 # --------------------------------------------------------------------------------------
 """Crypto
 """
