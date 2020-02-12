@@ -223,7 +223,7 @@ class AddUpdateHTLC:
             self.onion = onion.generate_new(
                 my_pubkey=config.rpc.getinfo()["id"],
                 next_pubkey=next_pubkey,
-                amount_msat=self.amount_msat,
+                amount_msat=self.amount_msat - config.channel_fee,
                 payment_hash=self.payment_hash,
                 cltv_expiry=self.cltv_expiry - config.CLTV_d,
             )

@@ -33,6 +33,7 @@ MSG_HEADER: int = MSG_LEN + MSG_LEN_MAC
 MSG_TYPE: int = 2
 ONION_SIZE: int = 1366
 MSG_MAC: int = 16
+channel_fee = 10
 # --------------------------------------------------------------------------------------
 """Plugin
 """
