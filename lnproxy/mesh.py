@@ -77,7 +77,12 @@ class Connection:
             self.gid = router.get_gid(config.node_info["id"])
             self.nursery = nursery
             self.geo_region = config.user["gotenna"].getint("geo_region")
-            self.sdk_token = config.user["gotenna"]["sdk_token"]
+            try:
+                from lnproxy.private import sdk_token
+
+                self.sdk_token = sdk_token
+            except ImportError:
+                self.sdk_token = config.user["gotenna"]["sdk_token"]
             self.to_mesh_send, self.to_mesh_recv = trio.open_memory_channel(50)
             self.from_mesh_send, self.from_mesh_recv = trio.open_memory_channel(50)
             self.nursery.start_soon(self.start_handlers)
