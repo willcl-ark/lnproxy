@@ -61,7 +61,7 @@ class Proxy:
         Will try to batch messages.
         Should not be called directly, instead use start().
         """
-        logger.info(f"Starting proxy to_mesh, initiator={initiator}")
+        logger.debug(f"Starting proxy to_mesh, initiator={initiator}")
         i = 0
         hs_acts = 2 if initiator else 1
         while True:
@@ -104,7 +104,7 @@ class Proxy:
         (the mesh "queue") or a trio.SocketStream.
         Should not be called directly, instead use start().
         """
-        logger.info(f"Starting proxy from_mesh, initiator={init}")
+        logger.debug(f"Starting proxy from_mesh, initiator={init}")
         i = 0
         hs_acts = 2 if init else 1
         while True:
@@ -156,7 +156,7 @@ async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
     logger.info(f"Handling new incoming connection from GID: {gid}")
     # First connect to our local C-Lightning node.
     stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
-    logger.debug("Connection made to local C-Lightning node")
+    logger.info("Connection made to local C-Lightning node")
     # Report back to Trio that we've made the connection and are ready to receive
     task_status.started()
     # Next proxy between the queue and the node.
@@ -205,4 +205,4 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
         handler_nursery=None,
         task_status=trio.TASK_STATUS_IGNORED,
     )
-    logger.debug(f"serve_outbound for GID {gid} finished.")
+    logger.info(f"serve_outbound for GID {gid} finished.")

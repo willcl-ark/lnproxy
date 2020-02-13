@@ -499,7 +499,7 @@ class Connection:
                 i += 1
                 if corr_id is None:
                     await trio.sleep(5)
-                    logger.debug(f"corr_id is None, retrying: #{i}")
+                    logger.debug(f"Mesh quota exceeded, retrying in 5 seconds: #{i} ")
             if corr_id is None:
                 logger.error(
                     f"Could not send message {payload} to GID {gid} in {i} tries"
