@@ -71,7 +71,12 @@ Change to the C-Lightning directory and source the script:
 ```bash
 # wherever you cloned C-Lightning, e.g.
 cd ~/src/lightning
-source contrib/startup_regtest.sh
+
+# For two gotennas/lightning nodes
+source contrib/startup_regtest_2.sh
+
+# For 3 gotennas/lightning nodes
+source contrib/startup_regtest_3.sh
 ```
 
 You will see printed a list of available commands for later reference. Of note you should remember that it is possible to shutdown all three nodes and bitcoind from a single command, `stop_ln` and cleanup everything with `cleanup_ln`.
