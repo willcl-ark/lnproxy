@@ -161,7 +161,6 @@ class AddUpdateHTLC:
         self.onion = None
 
     def is_key_send(self) -> bool:
-        # TODO: update config.key_sends?
         return self.payment_hash in config.key_sends
 
     def deserialize(self):

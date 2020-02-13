@@ -41,8 +41,8 @@ Next we add our goTenna SDK token and ONION_TOOL path to the config.ini file:
 2) Modify ONION_TOOL path as appropriate to point to your lightning/devtools/onion 
    binary file, e.g:
 
-
-    vim config.ini
+    `vim config.ini`
+        
         
     [goTenna Mesh]
     sdk_token = your_sdk_token_here
@@ -161,6 +161,15 @@ The "message" RPC implements a keysend-like functionality: we know about the rec
 It's this plugin routing table that we want to fully integrate with the underlying goTenna routing table in future work.
 
 
+# TODOs:
 
+
+- [ ] Fix first hop routing selection
+
+- [x] Fix bi-directional messaging (add `push_msat` to channel open?)
+
+- [ ] Calculate C_FEE and CLTV_DELTA on the fly from `getroute` rather than hardcoding
+
+- [ ] Integrate routing algorithm with the underlying goTenna routing
     
     

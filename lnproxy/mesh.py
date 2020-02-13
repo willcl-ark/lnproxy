@@ -110,9 +110,10 @@ class Connection:
 
     async def parse_recv_mesh_msg(self, msg: goTenna.message.Message):
         """Parses a received message.
-        If a node does not exist for this pubkey, then it creates the node and inits the
-        queues. It will start a new `handle_inbound` (in the main nursery) which will
-        monitor this node.
+        If a node does not exist for this pubkey, then it should create the node and
+        init the queues.
+        It will start a new `handle_inbound` (in the main nursery) which will monitor
+        this node.
         Puts the received message in the correct queue (stream) with header stripped.
         """
         _from = msg.payload.sender.gid_val
@@ -321,7 +322,6 @@ class Connection:
                         # self.events.callback.put(result)
                         logger.info(result)
                 if binary:
-                    # TODO: result not being returned for binary payloads
                     pass
                     # if results:
                     #     logger.info("Sent via mesh:\n")
