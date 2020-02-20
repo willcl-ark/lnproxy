@@ -12,6 +12,16 @@ Currently hardcoded values for a 3 node regtest, setup.
     
 * C-Lightning compiled with noencrypt_final.patch and gossip_disabled_and_300s_HTLC_timeout.patch applied.
 
+* [jq](https://stedolan.github.io/jq/download/) for your system
+
+* goTenna mesh devices running firmware 1.1.12
+
+* valid goTenna SDK token
+
+
+### libsecp256k1 installation
+
+First install libsecp256k1 from source as per the [project installation instructions](https://github.com/bitcoin-core/secp256k1)
 
 ### C Lightning installation
 
@@ -33,7 +43,7 @@ Clone and setup:
 ```bash
 git clone https://github.com/willcl-ark/lnproxy.git
 cd lnproxy
-python3 -m venv .venv
+python3 -m venv venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -46,13 +56,26 @@ Next we add our goTenna SDK token and ONION_TOOL path to the config.ini file:
    binary file, e.g `vim config.ini` and then add:
                 
 ```text
-[goTenna Mesh]
+[gotenna]
 sdk_token = your_sdk_token_here
 
-[Onion tool path]
+[onion]
 ONION_TOOL = path_to/your_onion/binary_file
 ```            
 
+Finally we must update the shebang (first line) in the gotenna plugin to point to our virtual environment python interpreter, so that when C-Lightning loads the plugin, it can find the correct dependencies:
+
+First, open the file `path_to_lnproxy/plugin/gotenna.py` in your text editor, and modify the first line like as below.
+To ensure you have the correct full path, you can navigate into the venv directory in terminal, type `pwd` and copy and paste the path:
+
+```text
+#!full_path_to_lnproxy/venv/bin/python3
+```
+
+If you are using a virtualenv manager such as pyenv, you can place the appropriate `.python_version` file into the lnproxy plugin or root directory and omit the steps above as hte shim system will automatically select the venv interpreter upon executing the script.
+
+
+Finally, please ensure that goTenna mesh devices are running firmware version v1.1.12, otherwise they will not be able to communicate with the Python SDK that this project uses. Please see this link on how to [update your firmware](https://support.gotennamesh.com/hc/en-us/articles/360022845872-Firmware-Update)
 
 ## Regtest Testing
 
@@ -202,6 +225,18 @@ The "message" RPC implements a keysend-like functionality: we know about the rec
 
 It's this plugin routing table that we want to fully integrate with the underlying goTenna routing table in future work.
 
+
+# Troubleshooting
+
+If you are having difficulty communicating with the goTenna mesh devices, please see the [goTenna SDK documentation](https://github.com/gotenna/PublicSDK/blob/master/python-public-sdk/goTennaSDK.pdf), particularly section 1 "Installing", as this lists some frequently-experienced issues with Linux systems. Of particular note are the following paragraphs:
+
+* On Linux, openssl-devel (or libssh-dev depending on distro) and libffi-dev are required to build the cryptography module we use.
+
+* On Linux, on at least Debian-based distributions, installing cryptography and cffi through the system package manager can cause conflicts with the versions that pip attempts to install, which reproduce as pip seg-faulting while installing our wheel. To workaround this, uninstall the system pack- ages python-cryptography and python-cffi-backend (or python3-cryptography and python3-cffi-backend on a multi-python system if you want to use python3) before installing the wheel.
+
+* On Linux,the modem manager daemon might try to capture the goTennaUSB link making the SDK connection fail with a timeout error. In this case, copy the 77-gotenna.rules in /etc/udev/rules.d for the modem manager to ignore the goTenna devices.
+
+* There are some currently known issues with running on Debian via Qubes OS, so currently this OS is not supported.
 
 # TODOs:
 
