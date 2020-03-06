@@ -10,7 +10,7 @@ Currently hardcoded values for a 3 node regtest, setup.
 
 * Python >= 3.7
     
-* C-Lightning compiled with noencrypt_final.patch and gossip_disabled_and_300s_HTLC_timeout.patch applied.
+* C-Lightning compiled with `noencrypt_final.patch` and `gossip_disabled_and_300s_HTLC_timeout.patch` applied.
 
 * [jq](https://stedolan.github.io/jq/download/) for your system
 
@@ -25,7 +25,7 @@ First install libsecp256k1 from source as per the [project installation instruct
 
 ### C Lightning installation
 
-Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), or patching C-Lightning manually using the provided patch. To use the pre-patched branch which is currently based on top ov v0.8.1rc1:
+Patch C-Lightning with noencrypt patch to disable lightning message encryption. This can either be done by pulling from my branch (recommended), or patching C-Lightning manually using the provided patch. If you patch C-Lightning yourself, be sure to pull the helper scripts from my branch (`contrib/startup_regtest*.sh`), as they automate much of the below. To use the pre-patched branch which is currently based on top ov v0.8.1rc1:
 
 ```bash
 git clone https://github.com/willcl-ark/lightning.git
@@ -63,17 +63,14 @@ sdk_token = your_sdk_token_here
 ONION_TOOL = path_to/your_onion/binary_file
 ```            
 
-Finally we must update the shebang (first line) in the gotenna plugin to point to our virtual environment python interpreter, so that when C-Lightning loads the plugin, it can find the correct dependencies:
+Finally we must update the shebang (first line) in the gotenna plugin file to point to our virtual environment's python interpreter, so that when C-Lightning loads the plugin, the python interpreter can find the required dependencies. If you use a venv manager such as pyenv, you can omit this step: simply setup this directory to use the venv interpreter (e.g. with pyenv create the appropriate `.python-version` file in the lnproxy top level directory.
 
-First, open the file `path_to_lnproxy/plugin/gotenna.py` in your text editor, and modify the first line like as below.
-To ensure you have the correct full path, you can navigate into the venv directory in terminal, type `pwd` and copy and paste the path:
+First, open the file `path_to_lnproxy_clone/plugin/gotenna.py` in your text editor, and modify the first line like as below.
+To ensure you have the correct full path, you can navigate into the venv directory in terminal, type `pwd` and copy and paste the path, appending `/venv/bin/python3` to the end which points to the python interpreter:
 
 ```text
 #!full_path_to_lnproxy/venv/bin/python3
 ```
-
-If you are using a virtualenv manager such as pyenv, you can place the appropriate `.python_version` file into the lnproxy plugin or root directory and omit the steps above as hte shim system will automatically select the venv interpreter upon executing the script.
-
 
 Finally, please ensure that goTenna mesh devices are running firmware version v1.1.12, otherwise they will not be able to communicate with the Python SDK that this project uses. Please see this link on how to [update your firmware](https://support.gotennamesh.com/hc/en-us/articles/360022845872-Firmware-Update)
 
@@ -243,7 +240,7 @@ If you are having difficulty communicating with the goTenna mesh devices, please
 
 - [ ] Fix first hop routing selection
 
-- [x] Fix bi-directional messaging (add `push_msat` to channel open?)
+- [x] Fix bi-directional messaging (add `push_msat` to channel open)
 
 - [ ] Calculate C_FEE and CLTV_DELTA on the fly from `getroute` rather than hardcoding
 
