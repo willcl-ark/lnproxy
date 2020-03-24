@@ -2,9 +2,8 @@ import logging
 import struct
 import subprocess
 
-import lnproxy.config as config
-import lnproxy.util as util
-
+import src.config as config
+import src.util as util
 
 logger = util.CustomAdapter(logging.getLogger("onion"), None)
 

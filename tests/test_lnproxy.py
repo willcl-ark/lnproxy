@@ -1,5 +1,5 @@
-import lnproxy.network as network
-from lnproxy import __version__
+import src.network as network
+from src import __version__
 
 
 def test_version():

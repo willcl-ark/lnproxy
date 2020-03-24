@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="lnproxy",
-    version="0.5.1",
+    version="0.5.2",
     author="Will Clark",
     author_email="will8clark@gmail.com",
-    description="A C-Lightning mesh proxy",
+    description="A C-Lightning transport proxy",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/pypa/sampleproject",
+    url="https://github.com/willcl-ark/lnproxy",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

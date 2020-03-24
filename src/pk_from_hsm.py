@@ -8,12 +8,11 @@ Derive node private key from the hsm_secret
 import hashlib
 import logging
 
-import secp256k1
 import hkdf
 import lightning
+import secp256k1
 
-from lnproxy.util import CustomAdapter
-
+from src.util import CustomAdapter
 
 logger = CustomAdapter(logging.getLogger("pkhsm"), None)
 nodes = [0, 1, 2]

@@ -21,7 +21,7 @@ be_u64: str = ">Q"
 le_32b: str = "<32s"
 le_onion: str = "<1366s"
 # --------------------------------------------------------------------------------------
-"""Lightning message size constants
+"""Lightning message constants
 """
 ADD_UPDATE_HTLC: int = 128
 PING = 18
@@ -48,7 +48,7 @@ key_sends = {}
 # --------------------------------------------------------------------------------------
 """goTenna
 """
-mesh_conn = None
+connection = None
 # --------------------------------------------------------------------------------------
 """Crypto
 """
@@ -61,3 +61,5 @@ nonce = 0xD9B4BEF9 .to_bytes(16, "big")
 #   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
 C_FEE: int = 2
 CLTV_d: int = 6
+MAX_GID: int = 0xFFFFFFFFFFFF
+router = None

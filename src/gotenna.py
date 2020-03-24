@@ -4,10 +4,9 @@ import time
 import goTenna
 import trio
 
-import lnproxy.config as config
-import lnproxy.network as network
-import lnproxy.proxy as proxy
-import lnproxy.util as util
+import src.config as config
+import src.proxy as proxy
+import src.util as util
 
 # For SPI connection only, set SPI_CONNECTION to true with proper SPI settings
 SPI_CONNECTION = False
@@ -16,15 +15,15 @@ SPI_CHIP_NO = 0
 SPI_REQUEST = 22
 SPI_READY = 27
 
-logger = util.CustomAdapter(logging.getLogger("mesh"), None)
+logger = util.CustomAdapter(logging.getLogger("gotenna"), None)
 logging.getLogger("goTenna").setLevel(level=logging.INFO)
 logging.getLogger("goTenna.driver").setLevel(level=logging.WARNING)
 logging.getLogger("goTenna.device").setLevel(level=logging.WARNING)
 logging.getLogger("goTenna.pcb_connection").setLevel(level=logging.WARNING)
-router = network.router
+router = config.router
 
 
-async def connection_daemon():
+async def gotenna_conn_daemon():
     """Load the goTenna mesh connection object (to persistent config.mesh_conn).
     Start the send_queue_daemon in its own nursery.
     """
@@ -38,8 +37,8 @@ async def connection_daemon():
     logger.debug("Got node info, starting connection")
     # start the mesh connection
     async with trio.open_nursery() as nursery:
-        config.mesh_conn = Connection(is_plugin=True, nursery=nursery)
-        while config.mesh_conn.active is False:
+        config.connection = Connection(is_plugin=True, nursery=nursery)
+        while config.connection.active is False:
             await trio.sleep(0.25)
         logger.debug("Connection and send_queue_daemon started successfully")
         await trio.sleep_forever()
@@ -72,13 +71,13 @@ class Connection:
         if self.is_plugin:
             # Wait for node info to populate from main thread
             logger.debug("goTenna in C-Lightning plugin mode")
-            while not config.node_info and len(router) < 3:
+            while not config.node_info and len(config.router) < 3:
                 time.sleep(1)
-            self.gid = router.get_gid(config.node_info["id"])
+            self.gid = config.router.get_gid(config.node_info["id"])
             self.nursery = nursery
             self.geo_region = config.user["gotenna"].getint("geo_region")
             try:
-                from lnproxy.private import sdk_token
+                from src.private import sdk_token
 
                 self.sdk_token = sdk_token
             except ImportError:
@@ -87,6 +86,7 @@ class Connection:
             self.from_mesh_send, self.from_mesh_recv = trio.open_memory_channel(50)
             self.nursery.start_soon(self.start_handlers)
         else:
+            # Attempt to use passed values
             self.gid = gid
             self.geo_region = geo_region
             self.sdk_token = sdk_token
@@ -124,10 +124,10 @@ class Connection:
         _from = msg.payload.sender.gid_val
         # check if we already have a handle_inbound running, if so continue
         try:
-            node = router.get_node(_from)
+            node = config.router.get_node(_from)
         except LookupError:
-            logger.exception(f"Node {_from} not found in router")
-            # Add to router
+            logger.exception(f"Node {_from} not found in config.router")
+            # Add to config.router
             # TODO: Create the new node automagically here
             raise
         except Exception:
@@ -140,17 +140,18 @@ class Connection:
                 await node.inbound[0].send_all(msg.payload._binary_data)
             except Exception:
                 logger.exception(
-                    "Exception in await node.inbound[0].send_all(msg.payload._binary_data)"
+                    "Exception in "
+                    "await node.inbound[0].send_all(msg.payload._binary_data)"
                 )
                 raise
 
     async def lookup_and_send(self, msg):
-        """Extract to_gid from message header and send the message over the mesh.
+        """Extract 'to_gid' (destination GID) from message header and send the message
+        over the mesh.
         """
         # Extract the GID from the header
         to_gid = int.from_bytes(msg[:8], "big")
         # send to GID using private message in binary mode
-        # logger.debug(f"lookup_and_send: GID={to_gid}, MSG={msg}")
         await self.send_private(to_gid, msg[8:], True)
 
     async def send_handler(self):
@@ -441,7 +442,7 @@ class Connection:
         try:
             if __gid > goTenna.constants.GID_MAX:
                 logger.error(
-                    f"{str(__gid)} is not a valid GID. The maximum GID is "
+                    f"{str(__gid)} is not a valid GID. The maximum goTenna GID is "
                     f"{str(goTenna.constants.GID_MAX)}",
                 )
                 return None, __gid

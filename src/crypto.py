@@ -5,8 +5,8 @@ Based on ECIESPY.
 
 from typing import Union
 
-from Crypto.Cipher import AES
 from coincurve import PrivateKey, PublicKey
+from Crypto.Cipher import AES
 from ecies.utils import decapsulate, encapsulate, hex2prv, hex2pub
 
 AES_CIPHER_MODE = AES.MODE_GCM

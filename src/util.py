@@ -7,7 +7,7 @@ from typing import Union
 
 import trio
 
-import lnproxy.config as config
+import src.config as config
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
@@ -147,11 +147,11 @@ async def receive_exactly(
     return res
 
 
-def chunk_to_list(data: bytes, chunk_len: int, prefix: bytes) -> iter:
+def chunk_to_list(data: bytes, chunk_len: int) -> iter:
     """Iterator to chunk data and append a header.
     """
     for i in range(0, len(data), chunk_len):
-        yield (prefix + data[i : i + chunk_len])
+        yield (data[i : i + chunk_len])
 
 
 suffixes = {
