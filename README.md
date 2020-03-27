@@ -83,7 +83,7 @@ Lnproxy is run by C-Lightning as a plugin, and we need to tell C-Lightning how t
 ```bash
 # e.g. on OSX you might do
 export PATH_TO_BITCOIN="/Users/$USER/Library/Application Support/Bitcoin"
-export PLUGIN_PATH="/Users/$USER/src/lnproxy/plugin/gotenna.py"
+export PLUGIN_PATH="/Users/$USER/src/lnproxy/plugin/lnproxy.py"
 ```
     
 Change to the C-Lightning directory and source the script:
@@ -102,18 +102,33 @@ source contrib/startup_regtest_3.sh
 You will see printed a list of available commands for later reference. Of note you should remember that it is possible to shutdown all three nodes and bitcoind from a single command, `stop_ln` and cleanup everything with `cleanup_ln`.
 
 
-## Quick run
+## Quick run (2 nodes, TCP mode)
 
-Using the helper functions in the c-lightning/contrib/startup_script.sh let you get set up faster. Run in approximately this sequence as necessary:
+Using the helper functions in the `c_lightning_dir/contrib/startup_regtest_2.sh` let you get set up faster. Run in approximately this sequence as necessary:
 
 ```bash
+# Start bitcoind and 2x C-Lightning
 start_ln
+# Add each node to the other node's router
 add_nodes
-# Now you should read the TCP socket which the receiving node will use, and connect
-# to it using your other program
-connect_ln_proxy
-channel_ln
+# Now begin outbound connection from l1 to l2.
+l1-cli proxy-connect (l2-cli gid)
 ```
+
+Next, grep the logs for l1 (`l1-log`) and l2 (`l2-log`) to see which TCP ports they are listening on for their respective remote nodes, i.e. find this equivalent line:
+
+`plugin-lnproxy.py: network |     INFO | Waiting for inbound TCP connection for node 222 at address localhost:port` 
+
+Now you can connect your transport layer to this tcp socket to send and receive messages for this node. If you are testing locally, you can connect the two regtest nodes together using the `tcp_proxy.py` tool found in /tools:
+
+```bash
+# In a new terminal window. Don't forget to activate any venv. Port order does not matter.
+
+python tools/tcp_proxy.py port1 port2
+```
+
+The connection should occur automatically from here, you can run e.g. `channel_ln` to open a new channel.
+    
     
 After these commands have completed, you can move right onto the [payments](#payments) or [spontaneous sends](#spontaneous-sends) sections below to start making payments.
 
