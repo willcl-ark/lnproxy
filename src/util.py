@@ -5,7 +5,7 @@ import pathlib
 import struct
 from typing import Union
 
-import trio
+import trio.testing
 
 import src.config as config
 

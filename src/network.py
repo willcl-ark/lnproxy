@@ -1,23 +1,71 @@
+import errno
 import logging
-import queue
+import os
+from random import randint
 
 import trio
-import trio.testing
+from trio._highlevel_open_tcp_listeners import open_tcp_listeners
 
 import src.config as config
-import src.proxy as proxy
+from src.proxy import handle_inbound
 from src.util import CustomAdapter
 
 logger = CustomAdapter(logging.getLogger("network"), None)
+
+SLEEP_TIME = 0.100
+# Errors that accept(2) can return, and which indicate that the system is
+# overloaded
+ACCEPT_CAPACITY_ERRNOS = {
+    errno.EMFILE,
+    errno.ENFILE,
+    errno.ENOMEM,
+    errno.ENOBUFS,
+}
+
+
+async def accept_one_tcp(node):
+    """Listens on node.tcp_port for a single IPV4 connection and returns the stream.
+    """
+    try:
+        _listeners = await open_tcp_listeners(port=node.tcp_port, host="0.0.0.0")
+        for listener in _listeners:
+            async with listener:
+                logger.info(
+                    f"Waiting for inbound TCP connection for node {node.gid} at address"
+                    f" localhost:{node.tcp_port}"
+                )
+                try:
+                    stream_remote = await listener.accept()
+                except OSError as exc:
+                    if exc.errno in ACCEPT_CAPACITY_ERRNOS:
+                        logger.error(
+                            "accept returned %s (%s); retrying in %s seconds",
+                            errno.errorcode[exc.errno],
+                            os.strerror(exc.errno),
+                            SLEEP_TIME,
+                            exc_info=True,
+                        )
+                        await trio.sleep(SLEEP_TIME)
+                    else:
+                        raise
+                else:
+                    node.stream_remote = stream_remote
+                    node.tcp_connected = True
+                    logger.debug(f"Accepted TCP connection for node {node.gid}")
+                    if node.stream_c_lightning:
+                        return
+                    else:
+                        await handle_inbound(node)
+
+    except:
+        logger.exception("Exception opening TCP socket")
 
 
 class Node:
     """A Node in the routing table.
     """
 
-    def __init__(
-        self, gid: int, pubkey: str, shared_key=None, sync_connection=False,
-    ):
+    def __init__(self, gid: int, pubkey: str, shared_key=None, listen=True):
         # gid and short_gid
         self.gid = gid
         # Short GID will be represented as GID modulo 256 * no. bytes allowed
@@ -26,12 +74,6 @@ class Node:
         # Lightning pubkey
         self.pubkey = pubkey
 
-        # Node's send/recv streams and queues
-        self.outbound_send, self.outbound_recv = trio.open_memory_channel(50)
-        self.inbound_send, self.inbound_recv = trio.testing.memory_stream_one_way_pair()
-        self.outbound_queue = queue.Queue()
-        self.inbound_queue = queue.Queue()
-
         # Unique node message header is GID as Big Endian 8 bytestring
         self.header = self.gid.to_bytes(1, "big")
 
@@ -39,66 +81,27 @@ class Node:
         self.shared_key = shared_key
 
         # Misc connection details
-        self.sync_connection = sync_connection
+        self.stream_c_lightning = None
+        self.stream_remote = None
+        self.tcp_port = randint(49152, 65535)
         self.outbound_count = 0
-
-        if sync_connection:
-            trio.from_thread.run_sync(config.nursery.start_soon, self.patch_to_queue)
+        self.tcp_connected = False
+        # Whether we open a listening TCP port for the node. We won't for ourselves,
+        # but will for all other added nodes
+        if listen:
+            trio.from_thread.run_sync(config.nursery.start_soon, accept_one_tcp, self)
 
     def __str__(self):
-        return f"GID: {self.gid}, PUBKEY: [{self.pubkey[:4]}...{self.pubkey[-4:]}]"
+        return (
+            f"GID: {self.gid}, PUBKEY: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
+            f"TCP_PORT: {self.tcp_port}"
+        )
 
     def __repr__(self):
-        return (
-            f"{self.__class__.__name__}"
-            f"("
-            f"{self.gid}, "
-            f"{self.pubkey}, "
-            f"sync_connection={self.sync_connection}"
-            f")"
-        )
+        return f"{self.__class__.__name__}" f"(" f"{self.gid}, " f"{self.pubkey}, " f")"
 
     def __eq__(self, other):
         return self.gid == other.gid and self.pubkey == other.pubkey
-
-    async def _patch_inbound(self, nursery):
-        """Patches inbound messages from the queue to a MemoryChannel.
-        """
-        logger.debug("Starting patch_inbound")
-        while True:
-            try:
-                msg = self.inbound_queue.get_nowait()
-            except queue.Empty:
-                await trio.sleep(1)
-                continue
-            # If we've not sent an outbound message before, this must be a new inbound
-            if self.outbound_count == 0:
-                # Therefore setup a new Proxy via handle_inbound
-                nursery.start_soon(proxy.handle_inbound, self.gid)
-            await self.inbound_send.send_all(bytes.fromhex(msg))
-
-    async def _patch_outbound(self):
-        """Patches outbound messages from the MemoryStream to a queue"""
-        logger.debug("Starting patch_outbound")
-        while True:
-            msg = await self.outbound_recv.receive()
-            self.outbound_queue.put(msg.hex())
-            # We also print to the terminal for manual copy/paste
-            logger.info(f"Send message to node {self.gid}:\n{msg.hex()}")
-            self.outbound_count += 1
-
-    async def patch_to_queue(self):
-        # In the case our transport connection prefers synchronous queues
-        logger.debug(f"Patching node {self.gid}'s streams to queues...")
-        try:
-            async with trio.open_nursery() as nursery:
-                nursery.start_soon(self._patch_inbound, nursery)
-                nursery.start_soon(self._patch_outbound)
-                logger.debug(f"Node {self.gid}'s stream patching complete")
-        except trio.MultiError:
-            logger.exception("Exception in patch_to_queue")
-        except Exception:
-            logger.exception("Unhandled exception in patch_to_queue")
 
 
 class Router:

@@ -2,6 +2,7 @@ import functools
 import logging
 
 import trio
+from trio._highlevel_serve_listeners import _serve_one_listener
 
 import src.config as config
 import src.messages as msg
@@ -14,8 +15,9 @@ class Proxy:
     """A proxy between a stream (from C-Lightning) and a node.
     """
 
-    def __init__(self, stream, node, stream_init: bool, q_init: bool):
-        self.stream = stream
+    def __init__(
+        self, node, stream_init: bool, q_init: bool,
+    ):
         self.node = node
         self.stream_init = stream_init
         self.q_init = q_init
@@ -43,22 +45,19 @@ class Proxy:
         else:
             if to_remote:
                 message = await msg.LightningMessage.from_stream(
-                    stream, to_remote, self.stream, cancel_scope
+                    stream, to_remote, self.node.stream_c_lightning, cancel_scope
                 )
             else:
                 message = await msg.LightningMessage.from_stream(
-                    stream, to_remote, self.stream, None
+                    stream, to_remote, self.node.stream_c_lightning, None
                 )
             if await message.parse():
                 return bytes(message.returned_msg)
             return b""
 
     async def _to_remote(self, read, write, initiator: bool):
-        """Read from Local SocketStream and write to the node's outbound_send
-        MemoryStream.
-
-        * Will automatically try to batch messages according to the BATCH_DELAY found in
-        config.ini.
+        """Read from node.stream_c_lightning (trio.SocketStream) and write to
+        node.stream_remote (trio.SocketStream).
 
         * Should not be called directly, instead use Proxy.start().
         """
@@ -67,31 +66,10 @@ class Proxy:
         hs_acts = 2 if initiator else 1
         while True:
             message = bytearray()
-            batched = 0
-
-            # Read one message from the socket
             message += await self.read_message(read, i, hs_acts, initiator, True)
             i += 1
-
-            # After we've got one, check to see if more can be batched
-            with trio.move_on_after(config.user["message"].getint("BATCH_DELAY")) as cs:
-                while True:
-                    message += await self.read_message(
-                        read, i, hs_acts, initiator, True, cs
-                    )
-                    i += 1
-                    logger.debug(f"Read message: {message.hex()}")
-                    batched += 1
-            if batched:
-                logger.info(f"Batched {batched + 1} messages")
-            self.bytes_to_remote += len(message)
-
-            # Chunk the message
-            for _msg in util.chunk_to_list(
-                bytes(message), config.user["message"].getint("CHUNK_SIZE"),
-            ):
-                await write(_msg)
-                self.count_to_remote += 1
+            await write(message)
+            self.count_to_remote += 1
             logger.debug(
                 f"Sent | "
                 f"read: {i}, "
@@ -120,21 +98,27 @@ class Proxy:
             )
 
     async def start(self):
-        logger.info(f"Proxying between local node and GID {self.node.gid}")
+        logger.info(f"Proxying between C-Lightning and node: {str(self.node)}")
         # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.node.gid)
+        if not self.node.tcp_connected:
+            logger.info(
+                f"Waiting for inbound IPV4 TCP connection for node on port {self.node.tcp_port}"
+            )
+        while not self.node.tcp_connected:
+            await trio.sleep(0.1)
         try:
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(
                     self._to_remote,
-                    self.stream,
-                    self.node.outbound_send.send,
+                    self.node.stream_c_lightning,
+                    self.node.stream_remote.send_all,
                     self.stream_init,
                 )
                 nursery.start_soon(
                     self._from_remote,
-                    self.node.inbound_recv,
-                    self.stream.send_all,
+                    self.node.stream_remote,
+                    self.node.stream_c_lightning.send_all,
                     self.q_init,
                 )
         except msg.UnknownMessage:
@@ -145,11 +129,12 @@ class Proxy:
             logger.exception(
                 f"Unhandled exception in Proxy.start() for node {self.node.gid}"
             )
-            # cleanup after connection closed
+        # cleanup after connection closed
         finally:
             config.router.cleanup(self.node.gid)
             with trio.fail_after(2):
-                await self.stream.aclose()
+                await self.node.stream_c_lightning.aclose()
+                await self.node.stream_remote.aclose()
             logger.warning(f"Proxy for GID {self.node.gid} exited")
 
 
@@ -165,31 +150,34 @@ async def check_node_gid(gid):
     return config.router.get_node(gid)
 
 
-async def handle_inbound(gid: int, task_status=trio.TASK_STATUS_IGNORED):
+async def handle_inbound(node, task_status=trio.TASK_STATUS_IGNORED):
     """Handle a new inbound connection.
     Will open a new connection to local C-Lightning node and then proxy with the queue.
     """
-    node = await check_node_gid(gid)
     logger.info(f"Handling new incoming connection from GID: {node.gid}")
     # First connect to our local C-Lightning node.
-    stream = await trio.open_unix_socket(config.node_info["binding"][0]["socket"])
+    node.stream_c_lightning = await trio.open_unix_socket(
+        config.node_info["binding"][0]["socket"]
+    )
     logger.info("Connection made to local C-Lightning node")
     # Report back to Trio that we've made the connection and are ready to receive
     task_status.started()
     # Next proxy between the queue and the node.
     # q_init is True because remote is handshake initiator.
-    proxy = Proxy(stream, node, stream_init=False, q_init=True)
+    proxy = Proxy(node, stream_init=False, q_init=True)
     await proxy.start()
 
 
-async def handle_outbound(stream: trio.SocketStream, node):
+async def handle_outbound(stream_c_lightning: trio.SocketStream, node):
     """Handles an outbound connection, creating the required queues if necessary
     and then proxying the connection with the queue.
     """
     logger.info(f"Handling new outbound connection to GID: {node.gid}")
-    # Proxy between the stream and the node.
+    # Assign the unix socket to C-Lightning to the node
+    node.stream_c_lightning = stream_c_lightning
+    # Proxy the streams.
     # stream_init is True because we are handshake initiator.
-    proxy = Proxy(stream, node, stream_init=True, q_init=False)
+    proxy = Proxy(node, stream_init=True, q_init=False)
     await proxy.start()
 
 
@@ -201,7 +189,7 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
     """
     # Get the node from the router
     node = await check_node_gid(gid)
-    # Setup the listening socket.
+    # Setup the listening socket C-Lightning will connect to
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
     sock.listen()
@@ -209,12 +197,15 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
     # Report back to Trio that we've made the connection and are ready to receive
     # This releases the block of the calling function
     task_status.started()
-    # Start only a single handle_outbound for this connection.
-    # TODO: If we keep this open, will it allow re-connects?
-    await trio.serve_listeners(
-        functools.partial(handle_outbound, node=node),
-        [trio.SocketListener(sock)],
-        handler_nursery=None,
-        # task_status=trio.TASK_STATUS_IGNORED,
-    )
+    # Start only a single handle_outbound per connection.
+    try:
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(
+                _serve_one_listener,
+                trio.SocketListener(sock),
+                nursery,
+                functools.partial(handle_outbound, node=node),
+            )
+    except:
+        logger.exception("Exception in serve_outbound")
     logger.info(f"serve_outbound for GID {node.gid} finished.")

@@ -127,8 +127,8 @@ fund_ln() {
 }
 
 connect_ln() {
-    l1-cli add-node $(l2-cli gid) $(l2-cli getinfo | jq .id)
-    l2-cli add-node $(l1-cli gid) $(l1-cli getinfo | jq .id)
+    l1-cli add-node $(l2-cli gid) $(l2-cli getinfo | jq .id) true
+    l2-cli add-node $(l1-cli gid) $(l1-cli getinfo | jq .id) true
 
     l1-cli proxy-connect $(l2-cli gid)
 }

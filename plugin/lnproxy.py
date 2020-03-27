@@ -56,7 +56,7 @@ def get_gid(plugin=None):
 
 
 @plugin.method("add-node")
-def add_node(gid, pubkey, sync_connection=True, plugin=None):
+def add_node(gid, pubkey, plugin=None):
     """Add a node to the plugin routing table.
     arg: gid: integer (within 0 < n < MAX_GID range from config.ini)
     arg: pubkey: a lightning pubkey
@@ -86,7 +86,7 @@ def add_node(gid, pubkey, sync_connection=True, plugin=None):
             f"{config.router.get_node(config.router.get_gid(pubkey))}"
         )
     # Create the node
-    _node = network.Node(_gid, str(pubkey), sync_connection=sync_connection)
+    _node = network.Node(_gid, str(pubkey))
     # Add to the router
     trio.from_thread.run(config.router.add, _node)
     return f"{_node} added to plugin router."
@@ -137,17 +137,6 @@ def proxy_connect(gid, plugin=None):
     trio.from_thread.run_sync(config.nursery.start_soon, _connect)
 
     return "Connection scheduled in trio main loop"
-
-
-@plugin.method("recv")
-def recv(gid, message_hex):
-    """Manually insert a received hex message into the node message queue.
-    :arg: gid (int)
-    :arg: message_hex (str)
-    """
-    _node = config.router.get_node(int(gid))
-    _node.inbound_queue.put(message_hex)
-    return "Message added to node queue"
 
 
 @plugin.method("message")
@@ -226,9 +215,7 @@ def init(options, configuration, plugin):
 
     # Add ourselves to the routing table
     _node = network.Node(
-        int(plugin.get_option("gid")),
-        str(config.node_info["id"]),
-        sync_connection=False,
+        int(plugin.get_option("gid")), str(config.node_info["id"]), listen=False
     )
     trio.from_thread.run(config.router.add, _node)
 

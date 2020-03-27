@@ -108,7 +108,10 @@ Using the helper functions in the c-lightning/contrib/startup_script.sh let you 
 
 ```bash
 start_ln
-connect_ln
+add_nodes
+# Now you should read the TCP socket which the receiving node will use, and connect
+# to it using your other program
+connect_ln_proxy
 channel_ln
 ```
     
