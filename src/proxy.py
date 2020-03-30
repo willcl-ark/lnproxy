@@ -1,4 +1,3 @@
-import functools
 import logging
 
 import trio
@@ -11,7 +10,7 @@ logger = util.CustomAdapter(logging.getLogger("proxy"), None)
 
 
 class Proxy:
-    """A proxy between Local C-Lightning and a (remote) node.
+    """A proxy for a node.
     """
 
     def __init__(
@@ -116,122 +115,27 @@ class Proxy:
         logger.info(f"Proxying between C-Lightning and node: {str(self.node)}")
         # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.node.gid)
-        if not self.node.tcp_connected:
-            logger.info(
-                f"Waiting for inbound IPV4 TCP connection for node on port {self.node.tcp_port}"
+
+        # # Wait for incoming TCP connection from remote node
+        # if not self.node.inbound_connected:
+        #     logger.info(
+        #         f"Waiting for inbound IPV4 TCP connection for node on port "
+        #         f"{self.node.tcp_port}"
+        #     )
+        # while not self.node.inbound_connected:
+        #     await trio.sleep(0.1)
+
+        # Proxy the connections
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(
+                self._to_remote,
+                self.node.stream_c_lightning,
+                self.node.stream_remote.send_all,
+                self.stream_init,
             )
-        while not self.node.tcp_connected:
-            await trio.sleep(0.1)
-        try:
-            async with trio.open_nursery() as nursery:
-                nursery.start_soon(
-                    self._to_remote,
-                    self.node.stream_c_lightning,
-                    self.node.stream_remote.send_all,
-                    self.stream_init,
-                )
-                nursery.start_soon(
-                    self._from_remote,
-                    self.node.stream_remote,
-                    self.node.stream_c_lightning.send_all,
-                    self.q_init,
-                )
-        except msg.UnknownMessage:
-            logger.exception("Received an unknown message, closing connection")
-        except trio.MultiError:
-            logger.exception(f"MultiError in Proxy.start() for node: {self.node.gid}")
-        except Exception:
-            logger.exception(
-                f"Unhandled exception in Proxy.start() for node {self.node.gid}"
+            nursery.start_soon(
+                self._from_remote,
+                self.node.stream_remote,
+                self.node.stream_c_lightning.send_all,
+                self.q_init,
             )
-        # cleanup after connection closed
-        finally:
-            config.router.cleanup(self.node.gid)
-            with trio.fail_after(2):
-                await self.node.stream_c_lightning.aclose()
-                await self.node.stream_remote.aclose()
-            logger.warning(f"Proxy for GID {self.node.gid} exited")
-
-
-async def check_node_gid(gid: int):
-    """Helper function to check if a node (by GID) is already in the router
-
-    :param gid: gid of node to lookup
-    :return: the node object (if it exists)
-    """
-    # Check if the node is in the router already:
-    if gid not in config.router:
-        logger.error(
-            f"GID {gid} not found in network router, aborting. Please add Node"
-            f"to router before trying to reconnect"
-        )
-        return
-    # Get the node for this connection
-    return config.router.get_node(gid)
-
-
-async def handle_inbound(node, task_status=trio.TASK_STATUS_IGNORED):
-    """Handle a new inbound connection.
-    Will open a new connection to local C-Lightning node and then proxy with the queue.
-
-    :param node: the node (network.Node) this relates to
-    :param task_status: Used to register with Trio when the task has "started"
-    :return: None
-    """
-    logger.info(f"Handling new incoming connection from GID: {node.gid}")
-    # First connect to our local C-Lightning node.
-    node.stream_c_lightning = await trio.open_unix_socket(
-        config.node_info["binding"][0]["socket"]
-    )
-    logger.info("Connection made to local C-Lightning node")
-    # Report back to Trio that we've made the connection and are ready to receive
-    task_status.started()
-    # Next proxy between the queue and the node.
-    # q_init is True because remote is handshake initiator.
-    proxy = Proxy(node, stream_init=False, q_init=True)
-    await proxy.start()
-
-
-async def handle_outbound(stream_c_lightning: trio.SocketStream, node):
-    """Handles an outbound connection, creating the required queues if necessary
-    and then proxying the connection with the queue.
-
-    :param stream_c_lightning: The Unix SocketStream to (local) C-Lightning
-    :param node: the node (network.Node) this relates to
-    :return: None
-    """
-    logger.info(f"Handling new outbound connection to GID: {node.gid}")
-    # Assign the unix socket to C-Lightning to the node
-    node.stream_c_lightning = stream_c_lightning
-    # Proxy the streams.
-    # stream_init is True because we are handshake initiator.
-    proxy = Proxy(node, stream_init=True, q_init=False)
-    await proxy.start()
-
-
-async def serve_outbound(listen_addr, node, task_status=trio.TASK_STATUS_IGNORED):
-    """Serve a listening socket at listen_addr.
-    Start a single handle_outbound for the first connection received to this socket.
-    This will be run once per outbound connection made by C-Lightning (using rpc
-    `proxy-connect`) so that each connection has it's own socket address.
-
-    :param listen_addr: Unix Socket address
-    :param node: the node (network.Node) this relates to
-    :param task_status: Used to register with Trio when the task has "started"
-    :return: None
-    """
-    # Setup the listening socket C-Lightning will connect to
-    sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
-    await sock.bind(listen_addr)
-    sock.listen()
-    logger.debug(f"Listening for new outbound connection on {listen_addr}")
-    # Report back to Trio that we've made the connection and are ready to receive
-    # This releases the block of the calling function
-    task_status.started()
-    # Start only a single handle_outbound per connection.
-    _handler = functools.partial(handle_outbound, node=node)
-    try:
-        await trio.serve_listeners(_handler, [trio.SocketListener(sock)])
-    except:
-        logger.exception("Exception in serve_outbound")
-    logger.info(f"serve_outbound for GID {node.gid} finished.")

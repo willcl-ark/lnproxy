@@ -12,10 +12,8 @@ args = parser.parse_args()
 
 
 async def main():
-    """Make an outbound connection to two TCP servers, and proxy the streams.
+    """Host a TCP server on port1 and proxy it to port2, and proxy the streams.
     """
-    stream_a = await trio.open_tcp_stream("127.0.0.1", args.port1)
-    stream_b = await trio.open_tcp_stream("127.0.0.1", args.port2)
 
     async def a_to_b(a: trio.SocketStream, b: trio.SocketStream):
         async for data in a:
@@ -25,10 +23,14 @@ async def main():
         async for data in b:
             await a.send_all(data)
 
-    async with stream_a, stream_b:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(a_to_b, stream_a, stream_b)
-            nursery.start_soon(b_to_a, stream_b, stream_a)
+    async def handle_connection(stream_a):
+        stream_b = await trio.open_tcp_stream("127.0.0.1", args.port2)
+        async with stream_a, stream_b:
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(a_to_b, stream_a, stream_b)
+                nursery.start_soon(b_to_a, stream_b, stream_a)
+
+    await trio.serve_tcp(handle_connection, args.port1)
 
 
 trio.run(main)

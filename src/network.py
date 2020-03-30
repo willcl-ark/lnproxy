@@ -1,65 +1,14 @@
-import errno
-import functools
 import logging
+import pathlib
 from random import randint
 
 import trio
 
 import src.config as config
-from src.proxy import handle_inbound
+from src.proxy import Proxy
 from src.util import CustomAdapter
 
 logger = CustomAdapter(logging.getLogger("network"), None)
-
-SLEEP_TIME = 0.100
-# Errors that accept(2) can return, and which indicate that the system is
-# overloaded
-ACCEPT_CAPACITY_ERRNOS = {
-    errno.EMFILE,
-    errno.ENFILE,
-    errno.ENOMEM,
-    errno.ENOBUFS,
-}
-
-
-async def node_handle_tcp(stream_remote, node):
-    """Handles an incoming TCP stream.
-    Determines whether it's inbound or outbound based on if we are already connected
-    locally to C-Lightning.
-
-    :param stream_remote: the TCP connection stream passed in automatically
-    :param node: the node this connection relates to
-    :return: None
-    """
-    node.stream_remote = stream_remote
-    node.tcp_connected = True
-    logger.debug(f"Accepted TCP connection for node {node.gid}")
-
-    # If we are already connected to C-Lightning, this is an outbound
-    # connection, so just sleep forever to prevent the socket from closing.
-    if node.stream_c_lightning:
-        await trio.sleep_forever()
-    # If not, then this is an inbound connection, so start handle_inbound()
-    # for this node.
-    else:
-        await handle_inbound(node)
-
-
-async def node_serve_tcp(node):
-    """Listens on node.tcp_port for IPV4 connections and passes connections to handler.
-
-    :param node: the node this tcp server relates to
-    :return: None
-    """
-    try:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(
-                trio.serve_tcp,
-                functools.partial(node_handle_tcp, node=node),
-                node.tcp_port,
-            )
-    except Exception:
-        logger.exception("Exception in serve_node_tcp()")
 
 
 class Node:
@@ -71,54 +20,175 @@ class Node:
         self,
         gid: int,
         pubkey: str,
-        tcp_port=randint(49152, 65535),
+        port_remote=randint(49152, 65535),
         shared_key=None,
         listen=True,
     ):
-        # gid and short_gid
+        self.cancel_scope = None
         self.gid = gid
-        # Short GID will be represented as GID modulo 256 * no. bytes allowed
-        self.short_gid = gid % (256 * config.user.getint("message", "SEND_ID_LEN"))
-
-        # Lightning pubkey
-        self.pubkey = pubkey
-
-        # Unique node message header is GID as Big Endian 8 bytestring
         self.header = self.gid.to_bytes(1, "big")
-
-        # DH shared key for ourselves and this node
+        self.inbound_connected = False
+        self.listen_addr = None
+        self.local_connected = False
+        self.outbound = False
+        self.outbound_count = 0
+        if port_remote == 0:
+            self.port_remote = randint(49152, 65535)
+        else:
+            self.port_remote = port_remote
+        self.proxy = None
+        self.pubkey = pubkey
+        self.rpc = None
         self.shared_key = shared_key
-
-        # Misc connection details
+        self.short_gid = gid % (256 * config.user.getint("message", "SEND_ID_LEN"))
         self.stream_c_lightning = None
         self.stream_remote = None
-        if tcp_port == 0:
-            self.tcp_port = randint(49152, 65535)
-        else:
-            self.tcp_port = tcp_port
-        self.outbound_count = 0
-        self.tcp_connected = False
-        # Whether we open a listening TCP port for the node. We won't for ourselves,
-        # but will for all other added nodes
-        if listen:
-            trio.from_thread.run_sync(
-                config.nursery.start_soon, node_serve_tcp, self,
-            )
+        # if listen:
+        #     trio.from_thread.run_sync(
+        #         config.nursery.start_soon, self.serve_inbound,
+        #     )
 
     def __str__(self):
         return (
             f"GID: {self.gid}, pubkey: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
-            f"tcp_port: {self.tcp_port}"
+            f"tcp_port: {self.port_remote}"
         )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(gid={self.gid}, pubkey={self.pubkey}, "
-            f"tcp_port{self.tcp_port}, shared_key{self.shared_key})"
+            f"tcp_port{self.port_remote}, shared_key{self.shared_key})"
         )
 
     def __eq__(self, other):
         return self.gid == other.gid and self.pubkey == other.pubkey
+
+    async def _handle_inbound(self, stream_remote: trio.SocketStream):
+        """Handles an incoming TCP stream.
+        Determines whether it's inbound or outbound based on if we are already connected
+        locally to C-Lightning.
+
+        :param stream_remote: the TCP connection stream passed in automatically
+        :return: None
+        """
+        if self.inbound_connected:
+            logger.info(
+                f"Node {self.gid} already connected to from port {self.port_remote}"
+            )
+            await stream_remote.send_all(b"Already one connection to node.\n")
+            return
+        self.stream_remote = stream_remote
+        self.inbound_connected = True
+        logger.debug(f"Accepted TCP connection relating to node {self.gid}")
+
+        # If outbound we just sleep forever here to prevent the socket from closing
+        # while we wait for the local connection to be made
+        if self.outbound:
+            await trio.sleep_forever()
+
+        # If not, then this is an inbound connection, so start handle_inbound()
+        # for this node.
+        else:
+            logger.info(f"Handling new incoming connection from GID: {self.gid}")
+            # First connect to our local C-Lightning node.
+            self.stream_c_lightning = await trio.open_unix_socket(
+                config.node_info["binding"][0]["socket"]
+            )
+            logger.info("Connection made to local C-Lightning node")
+            # Next proxy between the queue and the node.
+            # q_init is True because remote is handshake initiator.
+            self.proxy = Proxy(self, stream_init=False, q_init=True)
+            try:
+                async with trio.open_nursery() as nursery:
+                    nursery.start_soon(self.proxy.start)
+            except:
+                logger.exception("Exception in serve_node_tcp()")
+            finally:
+                with trio.move_on_after(2):
+                    await self.stream_c_lightning.aclose()
+                    await self.stream_remote.aclose()
+                self.inbound_connected = False
+
+    async def serve_inbound(self):
+        """Listens on node.tcp_port for IPV4 connections and passes connections to
+        handler.
+        """
+        await trio.serve_tcp(self._handle_inbound, self.port_remote)
+
+    async def _handle_local(self, stream_c_lightning: trio.SocketStream):
+        """Handles an outbound connection, creating the required queues if necessary
+        and then proxying the connection with the queue.
+
+        :param stream_c_lightning: The Unix SocketStream to (local) C-Lightning
+        :param self: the node (network.Node) this relates to
+        :return: None
+        """
+        logger.debug(
+            f"Handling new outbound connection to GID {self.gid} on port {self.port_remote}"
+        )
+        self.local_connected = True
+
+        # Check the Unix socket is listening, tell CL to connect in to it
+        while not pathlib.Path(self.listen_addr).is_socket():
+            await trio.sleep(0.2)
+        self.rpc.connect(self.pubkey, self.listen_addr)
+        # Assign the SocketStream to the node
+        self.stream_c_lightning = stream_c_lightning
+
+        # Next make outbound connection to remote port
+        self.stream_remote = await trio.open_tcp_stream("127.0.0.1", self.port_remote)
+        self.inbound_connected = True
+
+        # Proxy the streams.
+        # stream_init is True because we are handshake initiator.
+        self.proxy = Proxy(self, stream_init=True, q_init=False)
+        try:
+            # await self.proxy.start()
+            pass
+        except:
+            logger.exception(f"Exception in _handle_outbound() for node {self.gid}")
+        finally:
+            with trio.move_on_after(2):
+                await self.stream_c_lightning.aclose()
+                await self.stream_remote.aclose()
+            # Cancel serve_local when we drop a connection
+            self.cancel_scope.cancel()
+
+    async def serve_local(self):
+        """Serve a listening socket at listen_addr.
+        Start a single handle_outbound for the first connection received to this socket.
+        This will be run once per outbound connection made by C-Lightning (using rpc
+        `proxy-connect`) so that each connection has it's own socket address.
+
+        :param listen_addr: Unix Socket address
+        :param self: the node (network.Node) this relates to
+        :param task_status: Used to register with Trio when the task has "started"
+        :return: None
+        """
+        # Setup the listening socket C-Lightning will connect to
+        try:
+            sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
+            await sock.bind(self.listen_addr)
+            sock.listen()
+        except:
+            logger.exception(
+                f"Exception setting up listening unix socket for node {self.gid}"
+            )
+            return
+        logger.debug(
+            f"Listening for local connection from C-Lightning on {self.listen_addr}"
+        )
+
+        try:
+            with trio.CancelScope() as self.cancel_scope:
+                await trio.serve_listeners(
+                    self._handle_local, [trio.SocketListener(sock)]
+                )
+        except:
+            logger.exception("Exception in Node.serve_outbound()")
+        finally:
+            if self.cancel_scope.cancelled_caught:
+                logger.info(f"serve_local for node {self.gid} cancelled")
 
 
 class Router:
@@ -143,7 +213,7 @@ class Router:
     def __str__(self):
         return f"Router with {self.__len__()} Nodes:\n{self.nodes}"
 
-    async def add(self, node: Node):
+    def add(self, node: Node):
         """Add a node to the Router and make some handy lookup dicts.
         """
         self.nodes.append(node)
