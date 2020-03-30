@@ -26,46 +26,56 @@ ACCEPT_CAPACITY_ERRNOS = {
 async def accept_one_tcp(node):
     """Listens on node.tcp_port for a single IPV4 connection and returns the stream.
     """
-    try:
-        _listeners = await open_tcp_listeners(port=node.tcp_port, host="0.0.0.0")
-        for listener in _listeners:
-            async with listener:
-                logger.info(
-                    f"Waiting for inbound TCP connection for node {node.gid} at address"
-                    f" localhost:{node.tcp_port}"
-                )
-                try:
-                    stream_remote = await listener.accept()
-                except OSError as exc:
-                    if exc.errno in ACCEPT_CAPACITY_ERRNOS:
-                        logger.error(
-                            "accept returned %s (%s); retrying in %s seconds",
-                            errno.errorcode[exc.errno],
-                            os.strerror(exc.errno),
-                            SLEEP_TIME,
-                            exc_info=True,
-                        )
-                        await trio.sleep(SLEEP_TIME)
-                    else:
-                        raise
+    _listeners = await open_tcp_listeners(port=node.tcp_port, host="0.0.0.0")
+    for listener in _listeners:
+        async with listener:
+            logger.info(
+                f"Waiting for inbound TCP connection for node {node.gid} at address"
+                f" localhost:{node.tcp_port}"
+            )
+            try:
+                stream_remote = await listener.accept()
+            except OSError as exc:
+                if exc.errno in ACCEPT_CAPACITY_ERRNOS:
+                    logger.error(
+                        "accept returned %s (%s); retrying in %s seconds",
+                        errno.errorcode[exc.errno],
+                        os.strerror(exc.errno),
+                        SLEEP_TIME,
+                        exc_info=True,
+                    )
+                    await trio.sleep(SLEEP_TIME)
                 else:
-                    node.stream_remote = stream_remote
-                    node.tcp_connected = True
-                    logger.debug(f"Accepted TCP connection for node {node.gid}")
-                    if node.stream_c_lightning:
-                        return
-                    else:
-                        await handle_inbound(node)
+                    raise
+            except Exception:
+                logger.exception("Unhandled exception in Node.accept_one_tcp()")
+            else:
+                node.stream_remote = stream_remote
+                node.tcp_connected = True
+                logger.debug(f"Accepted TCP connection for node {node.gid}")
 
-    except:
-        logger.exception("Exception opening TCP socket")
+                # If we are already connected to C-Lightning, this is an outbound
+                # connection, so just return.
+                if node.stream_c_lightning:
+                    return
+                # If not, then this is an inbound connection, so start handle_inbound()
+                # for this node.
+                else:
+                    await handle_inbound(node)
 
 
 class Node:
     """A Node in the routing table.
     """
 
-    def __init__(self, gid: int, pubkey: str, shared_key=None, listen=True):
+    def __init__(
+        self,
+        gid: int,
+        pubkey: str,
+        tcp_port=randint(49152, 65535),
+        shared_key=None,
+        listen=True,
+    ):
         # gid and short_gid
         self.gid = gid
         # Short GID will be represented as GID modulo 256 * no. bytes allowed
@@ -83,7 +93,10 @@ class Node:
         # Misc connection details
         self.stream_c_lightning = None
         self.stream_remote = None
-        self.tcp_port = randint(49152, 65535)
+        if tcp_port == 0:
+            self.tcp_port = randint(49152, 65535)
+        else:
+            self.tcp_port = tcp_port
         self.outbound_count = 0
         self.tcp_connected = False
         # Whether we open a listening TCP port for the node. We won't for ourselves,
@@ -93,12 +106,15 @@ class Node:
 
     def __str__(self):
         return (
-            f"GID: {self.gid}, PUBKEY: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
-            f"TCP_PORT: {self.tcp_port}"
+            f"GID: {self.gid}, pubkey: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
+            f"tcp_port: {self.tcp_port}"
         )
 
     def __repr__(self):
-        return f"{self.__class__.__name__}" f"(" f"{self.gid}, " f"{self.pubkey}, " f")"
+        return (
+            f"{self.__class__.__name__}(gid={self.gid}, pubkey={self.pubkey}, "
+            f"tcp_port{self.tcp_port}, shared_key{self.shared_key})"
+        )
 
     def __eq__(self, other):
         return self.gid == other.gid and self.pubkey == other.pubkey
@@ -133,6 +149,7 @@ class Router:
         self.by_pubkey[str(node.pubkey)] = node
         self.by_gid[int(node.gid)] = node
         self.by_short_gid[node.short_gid] = node
+        logger.info(f"Added node {node} to router.")
 
     def remove(self, gid: int):
         """Remove a node from the router by gid or pubkey.

@@ -181,14 +181,12 @@ async def handle_outbound(stream_c_lightning: trio.SocketStream, node):
     await proxy.start()
 
 
-async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGNORED):
+async def serve_outbound(listen_addr, node, task_status=trio.TASK_STATUS_IGNORED):
     """Serve a listening socket at listen_addr.
     Start a single handle_outbound for the first connection received to this socket.
     This will be run once per outbound connection made by C-Lightning (using rpc
     `proxy-connect`) so that each connection has it's own socket address.
     """
-    # Get the node from the router
-    node = await check_node_gid(gid)
     # Setup the listening socket C-Lightning will connect to
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
     await sock.bind(listen_addr)
@@ -206,6 +204,6 @@ async def serve_outbound(listen_addr, gid: int, task_status=trio.TASK_STATUS_IGN
                 nursery,
                 functools.partial(handle_outbound, node=node),
             )
-    except:
+    except Exception:
         logger.exception("Exception in serve_outbound")
     logger.info(f"serve_outbound for GID {node.gid} finished.")

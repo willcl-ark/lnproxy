@@ -56,12 +56,11 @@ def get_gid(plugin=None):
 
 
 @plugin.method("add-node")
-def add_node(gid, pubkey, plugin=None):
+def add_node(gid, pubkey, tcp_port, plugin=None):
     """Add a node to the plugin routing table.
     arg: gid: integer (within 0 < n < MAX_GID range from config.ini)
     arg: pubkey: a lightning pubkey
-    # TODO: Make this option clearer
-    arg: gotenna: Whether this is a gotenna node
+    arg: tcp_port: the TCP port this node can be connected to with
     """
     _gid = int(gid)
     # Check that GID and pubkey are valid according to config.MAX_GID
@@ -85,8 +84,14 @@ def add_node(gid, pubkey, plugin=None):
             f"Pubkey {pubkey} already in router, remove before adding again: "
             f"{config.router.get_node(config.router.get_gid(pubkey))}"
         )
+    if tcp_port == 0:
+        pass
+    elif int(tcp_port) not in range(49152, 65535):
+        logger.warning(
+            f"TCP port selected for node not within recommended range: 49152 - 65535"
+        )
     # Create the node
-    _node = network.Node(_gid, str(pubkey))
+    _node = network.Node(_gid, str(pubkey), tcp_port=int(tcp_port))
     # Add to the router
     trio.from_thread.run(config.router.add, _node)
     return f"{_node} added to plugin router."
@@ -110,19 +115,18 @@ def remove_node(gid, plugin=None):
 def proxy_connect(gid, plugin=None):
     """Connect to a remote node via lnproxy.
     """
-    _gid = int(gid)
     try:
-        pubkey = config.router.get_pubkey(_gid)
+        node = config.router.get_node(int(gid))
     except LookupError as e:
-        return f"Could not find GID {_gid} in router, try adding first.\n{e}"
-    logging.debug(f"proxy-connect to gid {_gid} via lnproxy plugin")
+        return f"Could not find GID {node.gid} in router, try adding first.\n{e}"
+    logging.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
 
     # Generate a random fd to listen on for this outbound connection.
     listen_addr = f"/tmp/0{uuid.uuid4().hex}"
 
     # Setup the listening server for C-Lightning to connect through, started in the
     # main shared nursery.
-    trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", _gid)
+    trio.from_thread.run(config.nursery.start, serve_outbound, f"{listen_addr}", node)
 
     async def _connect():
         """Helper function to allow connect to be run in a new thread orchestrated by
@@ -131,7 +135,7 @@ def proxy_connect(gid, plugin=None):
         # Confirm the socket is created and listening.
         while not pathlib.Path(listen_addr).is_socket():
             await trio.sleep(0.2)
-        await trio.to_thread.run_sync(plugin.rpc.connect, str(pubkey), listen_addr)
+        await trio.to_thread.run_sync(plugin.rpc.connect, node.pubkey, listen_addr)
 
     # From this thread
     trio.from_thread.run_sync(config.nursery.start_soon, _connect)
