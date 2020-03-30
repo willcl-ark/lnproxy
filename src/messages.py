@@ -232,6 +232,13 @@ class AddUpdateHTLC:
         return self.payload[0:84] + self.onion
 
     def handle_key_send(self, derived_preimage, derived_payment_hash, decrypted_msg):
+        """Handle a key-send style message
+
+        :param derived_preimage: The preimage derived from decrypting the payload
+        :param derived_payment_hash: payment_hash derived from derived_preimage
+        :param decrypted_msg: decrypted_message bytes
+        :return:
+        """
         logger.debug(f"payment_hash:         {self.payment_hash.hex()}")
         logger.debug(f"derived_payment_hash: {derived_payment_hash.hex()}")
         # Add an invoice to C-Lightning for this amount so we 'expect' it
@@ -287,6 +294,12 @@ class AddUpdateHTLC:
             )
 
     def parse(self):
+        """Handles the main message logic.
+        Responsible to determining where this message came from, if it's encrypted, if
+        we can decrypt it and then what to do with it.
+
+        :return: the message payload after any parsing
+        """
         self.deserialize()
         # We are the htlc originator, also implies that to_remote is True
         if self.originator:
@@ -335,6 +348,11 @@ class HandshakeMessage:
     @classmethod
     async def from_stream(cls, stream, i: int, initiator: bool):
         """Read a new handshake message.
+
+        :param stream: the trio.SocketStream to read from
+        :param i: the message counter
+        :param initiator: whether we initiated on this side
+        :return: a new Message object.
         """
         # logger.debug(f"Starting read_handshake {i}")
         hs_pkt_size = {True: [50, 66], False: [50]}
@@ -382,6 +400,12 @@ class LightningMessage:
     @classmethod
     async def from_stream(cls, stream, to_remote: bool, return_stream, cancel_scope):
         """Reads a full lightning message from a stream.
+
+        :param stream: the trio.SocketStream to read from
+        :param to_remote: whether this is to_remote or not
+        :param return_stream: return the stream
+        :param cancel_scope: any trio.CancelScope optionally used for batching
+        :return: a new LightningMessage object
         """
         # Bolt #8: Read exactly 18 bytes from the network buffer.
         if to_remote:
@@ -482,6 +506,9 @@ class LightningMessage:
 
 
 def deserialize_type(msg_type: bytes) -> int:
-    """Deserialize the lightning message type
+    """Deserialize the lightning message type.
+
+    :param msg_type: the bytes of message.type
+    :return: an int representing lightning message type
     """
     return struct.unpack(config.be_u16, msg_type)[0]

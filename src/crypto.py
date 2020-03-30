@@ -18,24 +18,13 @@ __all__ = ["encrypt", "decrypt"]
 def encrypt(
     sender_privkey: str, receiver_pubkey: Union[str, bytes], msg: bytes, nonce: bytes,
 ) -> bytes:
-    """
-    Encrypt with receiver's secp256k1 public key
+    """Encrypt with receiver's secp256k1 public key
 
-    Parameters
-    ----------
-    sender_privkey: bytes
-        The senders secret key in byte form
-    receiver_pubkey: Union[str, bytes]
-        Receiver's public key (hex str or bytes)
-    msg: bytes
-        Data to encrypt
-    nonce: bytes
-        The nonce(16 bytes) used in the aes encryption
-
-    Returns
-    -------
-    bytes
-        Encrypted data
+    :param sender_privkey:
+    :param receiver_pubkey:
+    :param msg: message to encrypt
+    :param nonce: 16 byte nonce used in the aes encryption
+    :return: encrypted data
     """
     sender_privkey = hex2prv(sender_privkey)
     if isinstance(receiver_pubkey, str):
@@ -53,24 +42,13 @@ def encrypt(
 def decrypt(
     sender_pubkey: str, receiver_privkey: Union[str, bytes], msg: bytes, nonce: bytes,
 ) -> bytes:
-    """
-    Decrypt with receiver's secp256k1 private key
+    """Decrypt with receiver's secp256k1 private key
 
-    Parameters
-    ----------
-    sender_pubkey: bytes
-        The sender's public key
-    receiver_privkey: Union[str, bytes]
-        Receiver's private key (hex str or bytes)
-    msg: bytes
-        Data to decrypt
-    nonce: bytes
-        The nonce(16 bytes) used in the aes encryption
-
-    Returns
-    -------
-    bytes
-        Plain text
+    :param sender_pubkey:
+    :param receiver_privkey:
+    :param msg: message to decrypt
+    :param nonce: 16 byte nonce used in the aes decryption
+    :return: decrypted data
     """
     sender_pubkey = hex2pub(sender_pubkey)
     if isinstance(receiver_privkey, str):
@@ -85,22 +63,12 @@ def decrypt(
 
 
 def aes_encrypt(key: bytes, plain_text: bytes, nonce: bytes) -> bytes:
-    """
-    AES-GCM encryption
+    """AES-GCM encryption
 
-    Parameters
-    ----------
-    key: bytes
-        AES session key, which derived from two secp256k1 keys
-    plain_text: bytes
-        Plain text to encrypt
-    nonce: bytes
-        The nonce(16 bytes) used for encryption
-
-    Returns
-    -------
-    bytes
-        tag(16 bytes) + encrypted data
+    :param key: AES session key, which derived from two secp256k1 keys
+    :param plain_text: Plain text to encrypt
+    :param nonce: 16 byte nonce used for encryption
+    :return: tag(16 bytes) + encrypted data
     """
     aes_cipher = AES.new(key, AES_CIPHER_MODE, nonce=nonce)
 
@@ -113,23 +81,12 @@ def aes_encrypt(key: bytes, plain_text: bytes, nonce: bytes) -> bytes:
 
 
 def aes_decrypt(key: bytes, cipher_text: bytes, nonce: bytes) -> bytes:
-    """
-    AES-GCM decryption
+    """AES-GCM decryption
 
-    Parameters
-    ----------
-    key: bytes
-        AES session key, which derived from two secp256k1 keys
-    cipher_text: bytes
-        Encrypted text:
-            tag(16 bytes) + encrypted data
-    nonce: bytes
-        The nonce(16 bytes) used for decryption
-
-    Returns
-    -------
-    bytes
-        Plain text
+    :param key: AES session key, which derived from two secp256k1 keys
+    :param cipher_text: Encrypted Text: tag(16 bytes) + encrypted data
+    :param nonce: 16 byte nonce used for decryption
+    :return: plain text
     """
     iv = nonce
     tag = cipher_text[:16]

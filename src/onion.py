@@ -11,6 +11,10 @@ logger = util.CustomAdapter(logging.getLogger("onion"), None)
 def decode_hop_data(hop_data: bytes, layer=0):
     """Decode a legacy 'hop_data' payload
     https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
+
+    :param hop_data: the onion hop_data
+    :param layer: payload layer
+    :return: short_channel_id, amt_to_forward, outgoing_cltv_value, padding
     """
     off = 0 if len(hop_data) == 32 else 1
     # Bolt #7: The hop_data format is identified by a single 0x00-byte length, for
@@ -34,6 +38,11 @@ def encode_hop_data(
 ) -> bytes:
     """Encode a legacy 'hop_data' payload to bytes
     https://github.com/lightningnetwork/lightning-rfc/blob/master/04-onion-routing.md#legacy-hop_data-payload-format
+
+    :param short_channel_id: the short channel id this hop relates to
+    :param amt_to_forward: the amount to forward on this hop
+    :param outgoing_cltv_value: the outgoing cltv value to use for this hop
+    :return: the hop_data payload
     """
     # Bolt #7: The hop_data format is identified by a single 0x00-byte length, for
     # backward compatibility.
@@ -55,6 +64,13 @@ def generate_new(
 ) -> bytes:
     """Generates a new onion with our_pubkey as this hop, and next_pubkey as
     'final hop'
+
+    :param my_pubkey:
+    :param next_pubkey:
+    :param amount_msat:
+    :param payment_hash:
+    :param cltv_expiry:
+    :return: bytes of generated onion
     """
     logger.debug(
         f"my_pubkey: {my_pubkey}, amount_msat: {amount_msat}, "

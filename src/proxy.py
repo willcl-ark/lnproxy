@@ -2,7 +2,6 @@ import functools
 import logging
 
 import trio
-from trio._highlevel_serve_listeners import _serve_one_listener
 
 import src.config as config
 import src.messages as msg
@@ -12,7 +11,7 @@ logger = util.CustomAdapter(logging.getLogger("proxy"), None)
 
 
 class Proxy:
-    """A proxy between a stream (from C-Lightning) and a node.
+    """A proxy between Local C-Lightning and a (remote) node.
     """
 
     def __init__(
@@ -37,6 +36,14 @@ class Proxy:
     ) -> bytes:
         """A stream reader which reads a handshake or lightning message parses it and
         returns it.
+
+        :param stream: SocketStream to read from.
+        :param i: Which message number we are on.
+        :param hs_acts: How many hs_acts we are expecting to do in this direction.
+        :param initiator: Whether we initiated the connection.
+        :param to_remote: If this is "to_remote" (we will try to batch if so).
+        :param cancel_scope: A trio.CancelScope optionally used for batching timer
+        :return: the message read from the SocketStream.
         """
         if i < hs_acts:
             message = await msg.HandshakeMessage.from_stream(stream, i, initiator)
@@ -56,10 +63,13 @@ class Proxy:
             return b""
 
     async def _to_remote(self, read, write, initiator: bool):
-        """Read from node.stream_c_lightning (trio.SocketStream) and write to
-        node.stream_remote (trio.SocketStream).
+        """Proxy between local node and remote node.
+        Should not be called directly, instead use Proxy.start().
 
-        * Should not be called directly, instead use Proxy.start().
+        :param read: Local node Unix SocketStream
+        :param write: Remote node TCP SocketStream
+        :param initiator: Whether we initiated this connection
+        :return:
         """
         logger.debug(f"Starting proxy to_remote, initiator={initiator}")
         i = 0
@@ -69,6 +79,7 @@ class Proxy:
             message += await self.read_message(read, i, hs_acts, initiator, True)
             i += 1
             await write(message)
+            self.bytes_to_remote += len(message)
             self.count_to_remote += 1
             logger.debug(
                 f"Sent | "
@@ -78,9 +89,13 @@ class Proxy:
             )
 
     async def _from_remote(self, read, write, init: bool):
-        """Read from a SocketStream and write to a trio.MemorySendChannel
-        (the receive "queue") or a trio.SocketStream.
+        """Proxy between remote node and local node.
         Should not be called directly, instead use Proxy.start().
+
+        :param read: Remote node TCP socket stream.
+        :param write: Local node Unix socket stream.
+        :param init: Whether we initiated this connection.
+        :return:
         """
         logger.debug(f"Starting proxy from_remote, initiator={init}")
         i = 0
@@ -124,7 +139,7 @@ class Proxy:
         except msg.UnknownMessage:
             logger.exception("Received an unknown message, closing connection")
         except trio.MultiError:
-            logger.exception(f"Exception in Proxy.start() for node: {self.node.gid}")
+            logger.exception(f"MultiError in Proxy.start() for node: {self.node.gid}")
         except Exception:
             logger.exception(
                 f"Unhandled exception in Proxy.start() for node {self.node.gid}"
@@ -138,7 +153,12 @@ class Proxy:
             logger.warning(f"Proxy for GID {self.node.gid} exited")
 
 
-async def check_node_gid(gid):
+async def check_node_gid(gid: int):
+    """Helper function to check if a node (by GID) is already in the router
+
+    :param gid: gid of node to lookup
+    :return: the node object (if it exists)
+    """
     # Check if the node is in the router already:
     if gid not in config.router:
         logger.error(
@@ -153,6 +173,10 @@ async def check_node_gid(gid):
 async def handle_inbound(node, task_status=trio.TASK_STATUS_IGNORED):
     """Handle a new inbound connection.
     Will open a new connection to local C-Lightning node and then proxy with the queue.
+
+    :param node: the node (network.Node) this relates to
+    :param task_status: Used to register with Trio when the task has "started"
+    :return: None
     """
     logger.info(f"Handling new incoming connection from GID: {node.gid}")
     # First connect to our local C-Lightning node.
@@ -171,6 +195,10 @@ async def handle_inbound(node, task_status=trio.TASK_STATUS_IGNORED):
 async def handle_outbound(stream_c_lightning: trio.SocketStream, node):
     """Handles an outbound connection, creating the required queues if necessary
     and then proxying the connection with the queue.
+
+    :param stream_c_lightning: The Unix SocketStream to (local) C-Lightning
+    :param node: the node (network.Node) this relates to
+    :return: None
     """
     logger.info(f"Handling new outbound connection to GID: {node.gid}")
     # Assign the unix socket to C-Lightning to the node
@@ -186,6 +214,11 @@ async def serve_outbound(listen_addr, node, task_status=trio.TASK_STATUS_IGNORED
     Start a single handle_outbound for the first connection received to this socket.
     This will be run once per outbound connection made by C-Lightning (using rpc
     `proxy-connect`) so that each connection has it's own socket address.
+
+    :param listen_addr: Unix Socket address
+    :param node: the node (network.Node) this relates to
+    :param task_status: Used to register with Trio when the task has "started"
+    :return: None
     """
     # Setup the listening socket C-Lightning will connect to
     sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
@@ -196,14 +229,9 @@ async def serve_outbound(listen_addr, node, task_status=trio.TASK_STATUS_IGNORED
     # This releases the block of the calling function
     task_status.started()
     # Start only a single handle_outbound per connection.
+    _handler = functools.partial(handle_outbound, node=node)
     try:
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(
-                _serve_one_listener,
-                trio.SocketListener(sock),
-                nursery,
-                functools.partial(handle_outbound, node=node),
-            )
-    except Exception:
+        await trio.serve_listeners(_handler, [trio.SocketListener(sock)])
+    except:
         logger.exception("Exception in serve_outbound")
     logger.info(f"serve_outbound for GID {node.gid} finished.")

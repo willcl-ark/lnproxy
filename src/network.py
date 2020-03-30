@@ -1,10 +1,9 @@
 import errno
+import functools
 import logging
-import os
 from random import randint
 
 import trio
-from trio._highlevel_open_tcp_listeners import open_tcp_listeners
 
 import src.config as config
 from src.proxy import handle_inbound
@@ -23,49 +22,49 @@ ACCEPT_CAPACITY_ERRNOS = {
 }
 
 
-async def accept_one_tcp(node):
-    """Listens on node.tcp_port for a single IPV4 connection and returns the stream.
-    """
-    _listeners = await open_tcp_listeners(port=node.tcp_port, host="0.0.0.0")
-    for listener in _listeners:
-        async with listener:
-            logger.info(
-                f"Waiting for inbound TCP connection for node {node.gid} at address"
-                f" localhost:{node.tcp_port}"
-            )
-            try:
-                stream_remote = await listener.accept()
-            except OSError as exc:
-                if exc.errno in ACCEPT_CAPACITY_ERRNOS:
-                    logger.error(
-                        "accept returned %s (%s); retrying in %s seconds",
-                        errno.errorcode[exc.errno],
-                        os.strerror(exc.errno),
-                        SLEEP_TIME,
-                        exc_info=True,
-                    )
-                    await trio.sleep(SLEEP_TIME)
-                else:
-                    raise
-            except Exception:
-                logger.exception("Unhandled exception in Node.accept_one_tcp()")
-            else:
-                node.stream_remote = stream_remote
-                node.tcp_connected = True
-                logger.debug(f"Accepted TCP connection for node {node.gid}")
+async def node_handle_tcp(stream_remote, node):
+    """Handles an incoming TCP stream.
+    Determines whether it's inbound or outbound based on if we are already connected
+    locally to C-Lightning.
 
-                # If we are already connected to C-Lightning, this is an outbound
-                # connection, so just return.
-                if node.stream_c_lightning:
-                    return
-                # If not, then this is an inbound connection, so start handle_inbound()
-                # for this node.
-                else:
-                    await handle_inbound(node)
+    :param stream_remote: the TCP connection stream passed in automatically
+    :param node: the node this connection relates to
+    :return: None
+    """
+    node.stream_remote = stream_remote
+    node.tcp_connected = True
+    logger.debug(f"Accepted TCP connection for node {node.gid}")
+
+    # If we are already connected to C-Lightning, this is an outbound
+    # connection, so just sleep forever to prevent the socket from closing.
+    if node.stream_c_lightning:
+        await trio.sleep_forever()
+    # If not, then this is an inbound connection, so start handle_inbound()
+    # for this node.
+    else:
+        await handle_inbound(node)
+
+
+async def node_serve_tcp(node):
+    """Listens on node.tcp_port for IPV4 connections and passes connections to handler.
+
+    :param node: the node this tcp server relates to
+    :return: None
+    """
+    try:
+        async with trio.open_nursery() as nursery:
+            nursery.start_soon(
+                trio.serve_tcp,
+                functools.partial(node_handle_tcp, node=node),
+                node.tcp_port,
+            )
+    except Exception:
+        logger.exception("Exception in serve_node_tcp()")
 
 
 class Node:
     """A Node in the routing table.
+
     """
 
     def __init__(
@@ -102,7 +101,9 @@ class Node:
         # Whether we open a listening TCP port for the node. We won't for ourselves,
         # but will for all other added nodes
         if listen:
-            trio.from_thread.run_sync(config.nursery.start_soon, accept_one_tcp, self)
+            trio.from_thread.run_sync(
+                config.nursery.start_soon, node_serve_tcp, self,
+            )
 
     def __str__(self):
         return (
