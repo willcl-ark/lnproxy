@@ -143,7 +143,11 @@ async def receive_exactly(
         )
     res = bytearray()
     while len(res) < length:
-        res += await stream.receive_some(length - len(res))
+        _temp_res = await stream.receive_some(length - len(res))
+        if not _temp_res:
+            raise trio.ClosedResourceError("Socket was closed")
+        else:
+            res += _temp_res
     return res
 
 
@@ -151,7 +155,7 @@ def chunk_to_list(data: bytes, chunk_len: int) -> iter:
     """Iterator to chunk data and append a header.
     """
     for i in range(0, len(data), chunk_len):
-        yield (data[i : i + chunk_len])
+        yield data[i : i + chunk_len]
 
 
 suffixes = {
@@ -161,7 +165,7 @@ suffixes = {
 }
 
 
-def natural_size(value, binary=False, gnu=True, format="%.1f"):
+def natural_size(value, binary=False, gnu=True, _format="%.1f"):
     """show us sizes nicely formatted
     https://github.com/jmoiron/humanize.git
     """
@@ -173,21 +177,21 @@ def natural_size(value, binary=False, gnu=True, format="%.1f"):
         suffix = suffixes["decimal"]
 
     base = 1024 if (gnu or binary) else 1000
-    bytes = float(value)
+    _bytes = float(value)
 
-    if bytes == 1 and not gnu:
+    if _bytes == 1 and not gnu:
         return "1 Byte"
-    elif bytes < base and not gnu:
-        return "%d Bytes" % bytes
-    elif bytes < base and gnu:
-        return "%dB" % bytes
+    elif _bytes < base and not gnu:
+        return "%d Bytes" % _bytes
+    elif _bytes < base and gnu:
+        return "%dB" % _bytes
 
     for i, s in enumerate(suffix):
         unit = base ** (i + 2)
-        if bytes < unit and not gnu:
-            return (format + " %s") % ((base * bytes / unit), s)
-        elif bytes < unit and gnu:
-            return (format + "%s") % ((base * bytes / unit), s)
+        if _bytes < unit and not gnu:
+            return (_format + " %s") % ((base * _bytes / unit), s)
+        elif _bytes < unit and gnu:
+            return (_format + "%s") % ((base * _bytes / unit), s)
     if gnu:
-        return (format + "%s") % ((base * bytes / unit), s)
-    return (format + " %s") % ((base * bytes / unit), s)
+        return (_format + "%s") % ((base * _bytes / unit), s)
+    return (_format + " %s") % ((base * _bytes / unit), s)

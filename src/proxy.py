@@ -116,15 +116,6 @@ class Proxy:
         # Use the GID as a contextvar for this proxy session
         util.gid_key.set(self.node.gid)
 
-        # # Wait for incoming TCP connection from remote node
-        # if not self.node.inbound_connected:
-        #     logger.info(
-        #         f"Waiting for inbound IPV4 TCP connection for node on port "
-        #         f"{self.node.tcp_port}"
-        #     )
-        # while not self.node.inbound_connected:
-        #     await trio.sleep(0.1)
-
         # Proxy the connections
         async with trio.open_nursery() as nursery:
             nursery.start_soon(

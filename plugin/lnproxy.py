@@ -87,7 +87,10 @@ def add_node(gid, pubkey, plugin=None):
     _node = network.Node(_gid, str(pubkey))
     # Add to the router
     config.router.add(_node)
-    return f"{_node} added to plugin router."
+    return (
+        f"{_node.gid} added to plugin router and "
+        f"listening for incoming connections on port: {_node.port_remote_listen}"
+    )
 
 
 @plugin.method("remove-node")
@@ -104,9 +107,13 @@ def remove_node(gid, plugin=None):
         return f"Node with GID {gid} removed from router."
 
 
+# noinspection PyIncorrectDocstring
 @plugin.method("proxy-connect")
 def proxy_connect(gid, tcp_port, plugin=None):
     """Connect to a remote node via lnproxy.
+
+    :param gid: int: gid of node in router to connect to
+    :param tcp_port: int: tcp port the onward connection will connect to
     """
     try:
         node = config.router.get_node(int(gid))
@@ -114,23 +121,19 @@ def proxy_connect(gid, tcp_port, plugin=None):
         return f"Could not find GID {node.gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
 
-    # If tcp_port set to zero, let OS Kernel pick one for us
-    if tcp_port == 0:
-        pass
-    # Else we warn if it outside "safe" range
-    elif int(tcp_port) not in range(49152, 65535):
+    # Warn if it outside "safe" range
+    if int(tcp_port) not in range(49152, 65535):
         logger.warning(
             f"TCP port selected for node not within recommended range: 49152 - 65535"
         )
-    # Configure some node params
-    node.port_remote = int(tcp_port)
+
+    node.port_remote_out = int(tcp_port)
     node.listen_addr = f"/tmp/0{uuid.uuid4().hex}"
     node.rpc = plugin.rpc
     node.outbound = True
 
-    # Setup the listening server for C-Lightning to connect through, started in the
-    # main shared nursery.
-    trio.from_thread.run_sync(config.nursery.start_soon, node.serve_local)
+    # Setup the listening server for C-Lightning to connect to
+    trio.from_thread.run_sync(config.nursery.start_soon, node.serve_outbound)
     return "Connection scheduled in trio main loop"
 
 
@@ -245,10 +248,8 @@ async def main():
             # We run the plugin itself in a synchronous thread so trio.run() maintains
             # overall control of the runtime.
             config.nursery.start_soon(trio.to_thread.run_sync, plugin.run)
-    except trio.MultiError:
+    except (Exception, trio.MultiError):
         logger.exception("Exception in lnproxy.main():")
-    except Exception:
-        logger.exception("Unhandled exception in lnproxy.main()")
     logger.info("lnproxy plugin exited.")
 
 

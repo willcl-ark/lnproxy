@@ -65,7 +65,7 @@ ONION_TOOL = path_to/your_onion/binary_file
 
 Finally we must update the shebang (first line) in the gotenna plugin file to point to our virtual environment's python interpreter, so that when C-Lightning loads the plugin, the python interpreter can find the required dependencies. If you use a venv manager such as pyenv, you can omit this step: simply setup this directory to use the venv interpreter (e.g. with pyenv create the appropriate `.python-version` file in the lnproxy top level directory.
 
-First, open the file `path_to_lnproxy_clone/plugin/gotenna.py` in your text editor, and modify the first line like as below.
+First, open the file `path_to_lnproxy_clone/plugin/lnproxy.py` in your text editor, and modify the first line like as below.
 To ensure you have the correct full path, you can navigate into the venv directory in terminal, type `pwd` and copy and paste the path, appending `/venv/bin/python3` to the end which points to the python interpreter:
 
 ```text
@@ -92,7 +92,7 @@ Change to the C-Lightning directory and source the script:
 # wherever you cloned C-Lightning, e.g.
 cd ~/src/lightning
 
-# For two gotennas/lightning nodes
+# For two gotennas/lightning nodes, recommended
 source contrib/startup_regtest_2.sh
 
 # For 3 gotennas/lightning nodes
@@ -109,17 +109,23 @@ Using the helper functions in the `c_lightning_dir/contrib/startup_regtest_2.sh`
 ```bash
 # Start bitcoind and 2x C-Lightning
 start_ln
+
 # Add each node to the other node's router
 add_nodes
-# Now begin outbound connection from l1 to l2.
-l1-cli proxy-connect (l2-cli gid)
 ```
 
-Next, grep the logs for l1 (`l1-log`) and l2 (`l2-log`) to see which TCP ports they are listening on for their respective remote nodes, i.e. find this equivalent line:
+The `add_nodes` command will echo the listening port that node should connect in to to make an inbound connection
 
-`plugin-lnproxy.py: network |     INFO | Waiting for inbound TCP connection for node 222 at address localhost:port` 
+To make an outbound connection, use the `proxy-connect` command with the port your transport connection is listening on, e.g.:
 
-Now you can connect your transport layer to this tcp socket to send and receive messages for this node. If you are testing locally, you can connect the two regtest nodes together using the `tcp_proxy.py` tool found in /tools:
+```bash
+# Now begin outbound connection from l1 to l2. We need to provide TCP port our transport connection is listening on for the outbound connection, e.g. 53457
+
+# l1-cli proxy-connect gid port
+l1-cli proxy-connect $(l2-cli gid) 53457
+```
+
+If you are testing locally, you can connect the two regtest nodes together using the `tcp_proxy.py` tool found in /tools:
 
 ```bash
 # In a new terminal window. Don't forget to activate any venv. Port order does not matter.

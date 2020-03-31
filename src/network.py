@@ -6,7 +6,7 @@ import trio
 
 import src.config as config
 from src.proxy import Proxy
-from src.util import CustomAdapter
+from src.util import CustomAdapter, unlink_socket
 
 logger = CustomAdapter(logging.getLogger("network"), None)
 
@@ -20,22 +20,15 @@ class Node:
         self,
         gid: int,
         pubkey: str,
-        port_remote=randint(49152, 65535),
+        port_remote_listen=randint(49152, 65535),
         shared_key=None,
         listen=True,
     ):
-        self.cancel_scope = None
         self.gid = gid
         self.header = self.gid.to_bytes(1, "big")
-        self.inbound_connected = False
         self.listen_addr = None
-        self.local_connected = False
-        self.outbound = False
-        self.outbound_count = 0
-        if port_remote == 0:
-            self.port_remote = randint(49152, 65535)
-        else:
-            self.port_remote = port_remote
+        self.port_remote_listen = port_remote_listen
+        self.port_remote_out = None
         self.proxy = None
         self.pubkey = pubkey
         self.rpc = None
@@ -43,25 +36,34 @@ class Node:
         self.short_gid = gid % (256 * config.user.getint("message", "SEND_ID_LEN"))
         self.stream_c_lightning = None
         self.stream_remote = None
-        # if listen:
-        #     trio.from_thread.run_sync(
-        #         config.nursery.start_soon, self.serve_inbound,
-        #     )
+        if listen:
+            trio.from_thread.run_sync(config.nursery.start_soon, self.serve_inbound)
 
     def __str__(self):
         return (
             f"GID: {self.gid}, pubkey: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
-            f"tcp_port: {self.port_remote}"
+            f"listening port: {self.port_remote_listen}"
         )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(gid={self.gid}, pubkey={self.pubkey}, "
-            f"tcp_port{self.port_remote}, shared_key{self.shared_key})"
+            f"port_remote_listen{self.port_remote_listen}, shared_key{self.shared_key})"
         )
 
     def __eq__(self, other):
         return self.gid == other.gid and self.pubkey == other.pubkey
+
+    async def cleanup(self):
+        """Cleans up sockets and self.proxy after we finish.
+        """
+        # Try to close the sockets, but don't get hung up on it
+        with trio.move_on_after(5):
+            await self.stream_c_lightning.aclose()
+            await self.stream_remote.aclose()
+        self.proxy = None
+        self.stream_remote = None
+        logger.debug("Cleanup complete")
 
     async def _handle_inbound(self, stream_remote: trio.SocketStream):
         """Handles an incoming TCP stream.
@@ -71,51 +73,38 @@ class Node:
         :param stream_remote: the TCP connection stream passed in automatically
         :return: None
         """
-        if self.inbound_connected:
-            logger.info(
-                f"Node {self.gid} already connected to from port {self.port_remote}"
+        if self.proxy:
+            logger.warning(
+                f"Node {self.gid} already connected to from port {self.port_remote_listen}"
             )
-            await stream_remote.send_all(b"Already one connection to node.\n")
+            await stream_remote.send_all(b"Already one proxy running to this node.\n")
             return
         self.stream_remote = stream_remote
-        self.inbound_connected = True
-        logger.debug(f"Accepted TCP connection relating to node {self.gid}")
+        logger.info(f"Handling new incoming connection from GID: {self.gid}")
 
-        # If outbound we just sleep forever here to prevent the socket from closing
-        # while we wait for the local connection to be made
-        if self.outbound:
-            await trio.sleep_forever()
+        # First connect to our local C-Lightning node.
+        self.stream_c_lightning = await trio.open_unix_socket(
+            config.node_info["binding"][0]["socket"]
+        )
+        logger.info(f"Connection made to local C-Lightning node for GID: {self.gid}")
 
-        # If not, then this is an inbound connection, so start handle_inbound()
-        # for this node.
-        else:
-            logger.info(f"Handling new incoming connection from GID: {self.gid}")
-            # First connect to our local C-Lightning node.
-            self.stream_c_lightning = await trio.open_unix_socket(
-                config.node_info["binding"][0]["socket"]
-            )
-            logger.info("Connection made to local C-Lightning node")
-            # Next proxy between the queue and the node.
-            # q_init is True because remote is handshake initiator.
-            self.proxy = Proxy(self, stream_init=False, q_init=True)
-            try:
-                async with trio.open_nursery() as nursery:
-                    nursery.start_soon(self.proxy.start)
-            except:
-                logger.exception("Exception in serve_node_tcp()")
-            finally:
-                with trio.move_on_after(2):
-                    await self.stream_c_lightning.aclose()
-                    await self.stream_remote.aclose()
-                self.inbound_connected = False
+        # Next proxy between the queue and the node.
+        # q_init is True because remote is handshake initiator.
+        self.proxy = Proxy(self, stream_init=False, q_init=True)
+        try:
+            await self.proxy.start()
+        except (Exception, trio.MultiError):
+            logger.exception(f"Exception in serve_inbound() for {self.gid}")
+        finally:
+            await self.cleanup()
 
     async def serve_inbound(self):
-        """Listens on node.tcp_port for IPV4 connections and passes connections to
+        """Listens on node.port_remote for IPV4 connections and passes connections to
         handler.
         """
-        await trio.serve_tcp(self._handle_inbound, self.port_remote)
+        await trio.serve_tcp(self._handle_inbound, self.port_remote_listen)
 
-    async def _handle_local(self, stream_c_lightning: trio.SocketStream):
+    async def _handle_outbound(self, stream_c_lightning: trio.SocketStream):
         """Handles an outbound connection, creating the required queues if necessary
         and then proxying the connection with the queue.
 
@@ -123,72 +112,52 @@ class Node:
         :param self: the node (network.Node) this relates to
         :return: None
         """
+        if self.proxy:
+            logger.warning("Already handling a connection for this node")
+            return
         logger.debug(
-            f"Handling new outbound connection to GID {self.gid} on port {self.port_remote}"
+            f"Handling new outbound connection to GID {self.gid} on port {self.port_remote_out}"
         )
-        self.local_connected = True
-
-        # Check the Unix socket is listening, tell CL to connect in to it
-        while not pathlib.Path(self.listen_addr).is_socket():
-            await trio.sleep(0.2)
-        self.rpc.connect(self.pubkey, self.listen_addr)
-        # Assign the SocketStream to the node
+        # Assign the received SocketStream to this node
         self.stream_c_lightning = stream_c_lightning
 
-        # Next make outbound connection to remote port
-        self.stream_remote = await trio.open_tcp_stream("127.0.0.1", self.port_remote)
-        self.inbound_connected = True
+        # Next make outbound connection to remote port, fail if we can't do this
+        self.stream_remote = await trio.open_tcp_stream(
+            "127.0.0.1", self.port_remote_out
+        )
 
         # Proxy the streams.
         # stream_init is True because we are handshake initiator.
         self.proxy = Proxy(self, stream_init=True, q_init=False)
         try:
-            # await self.proxy.start()
-            pass
-        except:
-            logger.exception(f"Exception in _handle_outbound() for node {self.gid}")
+            await self.proxy.start()
+        except (Exception, trio.MultiError):
+            logger.exception(f"Exception in handle_outbound() for {self.gid}")
         finally:
-            with trio.move_on_after(2):
-                await self.stream_c_lightning.aclose()
-                await self.stream_remote.aclose()
-            # Cancel serve_local when we drop a connection
-            self.cancel_scope.cancel()
+            await self.cleanup()
 
-    async def serve_local(self):
+    async def serve_outbound(self):
         """Serve a listening socket at listen_addr.
         Start a single handle_outbound for the first connection received to this socket.
         This will be run once per outbound connection made by C-Lightning (using rpc
         `proxy-connect`) so that each connection has it's own socket address.
-
-        :param listen_addr: Unix Socket address
-        :param self: the node (network.Node) this relates to
-        :param task_status: Used to register with Trio when the task has "started"
-        :return: None
         """
-        # Setup the listening socket C-Lightning will connect to
-        try:
-            sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
-            await sock.bind(self.listen_addr)
-            sock.listen()
-        except:
-            logger.exception(
-                f"Exception setting up listening unix socket for node {self.gid}"
-            )
-            return
-        logger.debug(
-            f"Listening for local connection from C-Lightning on {self.listen_addr}"
-        )
+        # Try to unlink any in-use sockets
+        unlink_socket(self.listen_addr)
 
-        try:
-            with trio.CancelScope() as self.cancel_scope:
-                await trio.serve_listeners(
-                    self._handle_local, [trio.SocketListener(sock)]
-                )
-        except:
-            logger.exception("Exception in Node.serve_outbound()")
-        finally:
-            if self.cancel_scope.cancelled_caught:
-                logger.info(f"serve_local for node {self.gid} cancelled")
+        # Setup the socket C-Lightning will connect to, bind and listen
+        sock = trio.socket.socket(trio.socket.AF_UNIX, trio.socket.SOCK_STREAM)
+        await sock.bind(self.listen_addr)
+        sock.listen()
+
+        # Tell C-Lightning RPC to call connect
+        while not pathlib.Path(self.listen_addr).is_socket():
+            await trio.sleep(0.2)
+        config.nursery.start_soon(
+            trio.to_thread.run_sync, self.rpc.connect, self.pubkey, self.listen_addr
+        )
+        # For each connection received at the socket, pass to self._handle_local()
+        await trio.serve_listeners(self._handle_outbound, [trio.SocketListener(sock)])
 
 
 class Router:
@@ -230,6 +199,7 @@ class Router:
                 self.nodes.remove(node)
                 del self.by_gid[gid]
                 del self.by_pubkey[node.pubkey]
+                logger.info(f"Removed node {node} from router.")
                 return
         raise LookupError(f"GID {gid} not found in Router")
 
