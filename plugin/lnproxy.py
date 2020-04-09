@@ -118,7 +118,7 @@ def proxy_connect(gid, tcp_port, plugin=None):
     try:
         node = config.router.get_node(int(gid))
     except LookupError as e:
-        return f"Could not find GID {node.gid} in router, try adding first.\n{e}"
+        return f"Could not find GID {gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
 
     # Warn if it outside "safe" range
