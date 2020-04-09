@@ -9,7 +9,6 @@ import src.onion as onion
 import src.util as util
 
 logger = util.CustomAdapter(logging.getLogger("msg"), None)
-router = config.router
 send_id_len = config.user["message"].getint("SEND_ID_LEN")
 
 
@@ -266,7 +265,9 @@ class AddUpdateHTLC:
         send_id = self.payload[86 : 86 + send_id_len]
         logger.debug(f"Encrypted message send_id: {send_id}")
         # Get the sender pubkey from the routing table
-        sender_pubkey = router.by_short_gid[int.from_bytes(send_id, "big")].pubkey
+        sender_pubkey = config.router.by_short_gid[
+            int.from_bytes(send_id, "big")
+        ].pubkey
         logger.debug(f"Encrypted message sender_pubkey: {sender_pubkey}")
         # Create the encrypted message
         enc_msg = EncryptedMessage(
