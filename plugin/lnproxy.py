@@ -3,11 +3,10 @@ import logging
 import uuid
 
 import lightning
-import trio
-from secp256k1 import PublicKey
-
 import src.config as config
 import src.network as network
+import trio
+from secp256k1 import PublicKey
 from src.messages import EncryptedMessage
 from src.pk_from_hsm import get_privkey
 
@@ -32,6 +31,14 @@ plugin.add_option(
     default=None,
     description="A GID for the transport layer to use",
     opt_type="int",
+)
+
+
+plugin.add_option(
+    name="gotenna",
+    default=False,
+    description="Whether to enable the gotenna subsystem",
+    opt_type="bool",
 )
 
 
@@ -225,6 +232,13 @@ def init(options, configuration, plugin):
 
     # Suppress all C-Lightning gossip messages for newly-connected peers.
     plugin.rpc.dev_suppress_gossip()
+
+    # See if we should enable gotenna mode
+    if plugin.get_option("gotenna"):
+        logger.debug("Gotenna enabled in config, starting up")
+        import src.gotenna as gotenna
+
+        trio.from_thread.run_sync(config.nursery.start_soon, gotenna.conn_daemon)
 
     # Show the user the new RPCs available
     commands = list(plugin.methods.keys())

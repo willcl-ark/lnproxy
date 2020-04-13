@@ -21,7 +21,7 @@ logging.getLogger("goTenna.pcb_connection").setLevel(level=logging.WARNING)
 router = config.router
 
 
-async def gotenna_conn_daemon():
+async def conn_daemon():
     """Load the goTenna mesh connection object (to persistent config.mesh_conn).
     Start the send_queue_daemon in its own nursery.
     """
@@ -82,7 +82,7 @@ class Connection:
                 self.sdk_token = config.user["gotenna"]["sdk_token"]
             self.to_mesh_send, self.to_mesh_recv = trio.open_memory_channel(50)
             self.from_mesh_send, self.from_mesh_recv = trio.open_memory_channel(50)
-            self.nursery.start_soon(self.start_handlers)
+            # self.nursery.start_soon(self.start_handlers)
         else:
             # Attempt to use passed values
             self.gid = gid
