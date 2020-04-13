@@ -104,10 +104,9 @@ def remove_node(gid, plugin=None):
         return f"Node with GID {gid} removed from router."
 
 
-# noinspection PyIncorrectDocstring
-@plugin.method("proxy-connect")
-def proxy_connect(gid, tcp_port, plugin=None):
-    """Connect to a remote node via lnproxy.
+@plugin.method("connect-lnproxy")
+def connect_lnproxy(gid, tcp_port, plugin=None):
+    """Connect to a remote node via tcp socket using lnproxy.
 
     :param gid: int: gid of node in router to connect to
     :param tcp_port: int: tcp port the onward connection will connect to
@@ -125,7 +124,7 @@ def proxy_connect(gid, tcp_port, plugin=None):
         )
 
     node.port_remote_out = int(tcp_port)
-    node.listen_addr = f"/tmp/0{uuid.uuid4().hex}"
+    node.listen_addr = f"/tmp/lnproxy-{uuid.uuid4().hex}"
     node.rpc = plugin.rpc
     node.outbound = True
 
