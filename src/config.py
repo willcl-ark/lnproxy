@@ -4,12 +4,20 @@
 # User config import
 import configparser
 import os
+from logging import DEBUG, ERROR, INFO, WARNING
 
 user = configparser.ConfigParser()
 config_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
 )
 user.read(config_path)
+
+log_levels = {
+    "debug": DEBUG,
+    "info": INFO,
+    "warning": WARNING,
+    "error": ERROR,
+}
 
 # --------------------------------------------------------------------------------------
 """BigSize struct formatting codes
@@ -38,6 +46,8 @@ channel_fee = 10
 """Plugin
 """
 rpc = None
+log_level = log_levels[user["lnproxy"].get("DEBUG_LEVEL").lower()]
+log_fmt = "%(name)7s | %(levelname)8s | %(message)s"
 # --------------------------------------------------------------------------------------
 """Trio
 """

@@ -2,11 +2,10 @@ import logging
 import time
 
 import goTenna
-import trio
-
 import src.config as config
 import src.proxy as proxy
 import src.util as util
+import trio
 
 # For SPI connection only, set SPI_CONNECTION to true with proper SPI settings
 SPI_CONNECTION = False
@@ -16,7 +15,6 @@ SPI_REQUEST = 22
 SPI_READY = 27
 
 logger = util.CustomAdapter(logging.getLogger("gotenna"), None)
-logging.getLogger("goTenna").setLevel(level=logging.INFO)
 logging.getLogger("goTenna.driver").setLevel(level=logging.WARNING)
 logging.getLogger("goTenna.device").setLevel(level=logging.WARNING)
 logging.getLogger("goTenna.pcb_connection").setLevel(level=logging.WARNING)

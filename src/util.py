@@ -5,9 +5,8 @@ import pathlib
 import struct
 from typing import Union
 
-import trio.testing
-
 import src.config as config
+import trio.testing
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
@@ -27,6 +26,7 @@ class CustomAdapter(logging.LoggerAdapter):
 
 
 logger = CustomAdapter(logging.getLogger("util"), None)
+logger.setLevel(logging.DEBUG)
 
 
 def unlink_socket(address: str):

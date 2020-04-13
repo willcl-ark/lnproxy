@@ -15,10 +15,7 @@ from src.pk_from_hsm import get_privkey
 plugin = lightning.Plugin()
 
 # Initialise the logger
-handler = logging.StreamHandler()
-bf = logging.Formatter("%(name)7s | %(levelname)8s | %(message)s")
-handler.setFormatter(bf)
-logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+logging.basicConfig(level=config.log_level, format=config.log_fmt)
 logger = logging.getLogger("lnproxy")
 
 # Initialise the plugin router, the router is not currently persisted to disk
