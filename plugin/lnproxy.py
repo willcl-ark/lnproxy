@@ -2,17 +2,16 @@
 import logging
 import uuid
 
-import lightning
-import trio
-from secp256k1 import PublicKey
-
 import src.config as config
 import src.network as network
+import trio
+from pyln.client import Plugin
+from secp256k1 import PublicKey
 from src.messages import EncryptedMessage
 from src.pk_from_hsm import get_privkey
 
 # Initialise the plugin
-plugin = lightning.Plugin()
+plugin = Plugin()
 
 # Initialise the logger
 handler = logging.StreamHandler()
