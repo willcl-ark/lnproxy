@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import uuid
+from pathlib import Path
 
 import src.config as config
 import src.network as network
@@ -34,6 +35,14 @@ plugin.add_option(
     default=None,
     description="A GID for the transport layer to use",
     opt_type="int",
+)
+
+
+plugin.add_option(
+    name="onion-tool-path",
+    default="~/src/lightning/devtools/onion",
+    description="Path to C-Lightning's onion tool (in \"lightning/devtools\" folder)",
+    opt_type="string",
 )
 
 
@@ -198,10 +207,25 @@ def message(
     return config.rpc.sendpay(route, _message.payment_hash.hex(), description, amt_msat)
 
 
+def check_onion_tool(_plugin):
+    """Basic check to determine that onion-tool-path is pointing to a file
+    """
+    _path = Path(_plugin.get_option("onion-tool-path"))
+    config.onion_tool_path = _path.expanduser() if "~" in str(_path) else _path
+    if not config.onion_tool_path.is_file():
+        raise FileNotFoundError(
+            f"onion-tool-path={str(config.onion_tool_path)} set in C-Lightning config "
+            f"does not point to onion tool file."
+        )
+
+
 @plugin.init()
 # Parameters used by gotenna_plugin() internally
 def init(options, configuration, plugin):
     logger.info("Starting lnproxy plugin")
+
+    # Check the onion tool path is valid file
+    check_onion_tool(plugin)
 
     # Store the RPC in config to be accessible by all modules.
     config.rpc = plugin.rpc
