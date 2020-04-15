@@ -1,6 +1,5 @@
 import logging
 import pathlib
-from random import randint
 
 import trio
 
@@ -13,22 +12,24 @@ logger = CustomAdapter(logging.getLogger("network"), None)
 
 class Node:
     """A Node in the routing table.
-
     """
 
     def __init__(
         self,
         gid: int,
         pubkey: str,
-        port_remote_listen=randint(49152, 65535),
+        host_remote=None,
+        port_remote=None,
+        port_listen=None,
         shared_key=None,
         listen=True,
     ):
         self.gid = gid
         self.header = self.gid.to_bytes(1, "big")
         self.listen_addr = None
-        self.port_remote_listen = port_remote_listen
-        self.port_remote_out = None
+        self.host_remote = host_remote
+        self.port_remote = port_remote
+        self.port_listen = port_listen
         self.proxy = None
         self.pubkey = pubkey
         self.rpc = None
@@ -42,13 +43,13 @@ class Node:
     def __str__(self):
         return (
             f"GID: {self.gid}, pubkey: [{self.pubkey[:4]}...{self.pubkey[-4:]}], "
-            f"listening port: {self.port_remote_listen}"
+            f"listening port: {self.port_listen}"
         )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(gid={self.gid}, pubkey={self.pubkey}, "
-            f"port_remote_listen{self.port_remote_listen}, shared_key{self.shared_key})"
+            f"port_listen{self.port_listen}, shared_key{self.shared_key})"
         )
 
     def __eq__(self, other):
@@ -75,7 +76,7 @@ class Node:
         """
         if self.proxy:
             logger.warning(
-                f"Node {self.gid} already connected to from port {self.port_remote_listen}"
+                f"Node {self.gid} already connected to from port {self.port_listen}"
             )
             await stream_remote.send_all(b"Already one proxy running to this node.\n")
             return
@@ -102,7 +103,7 @@ class Node:
         """Listens on node.port_remote for IPV4 connections and passes connections to
         handler.
         """
-        await trio.serve_tcp(self._handle_inbound, self.port_remote_listen)
+        await trio.serve_tcp(self._handle_inbound, self.port_listen)
 
     async def _handle_outbound(self, stream_c_lightning: trio.SocketStream):
         """Handles an outbound connection, creating the required queues if necessary
@@ -116,14 +117,14 @@ class Node:
             logger.warning("Already handling a connection for this node")
             return
         logger.debug(
-            f"Handling new outbound connection to GID {self.gid} on port {self.port_remote_out}"
+            f"Handling new outbound connection to GID {self.gid} on {self.host_remote}:{self.port_remote}"
         )
         # Assign the received SocketStream to this node
         self.stream_c_lightning = stream_c_lightning
 
         # Next make outbound connection to remote port, fail if we can't do this
         self.stream_remote = await trio.open_tcp_stream(
-            "127.0.0.1", self.port_remote_out
+            self.host_remote, self.port_remote
         )
 
         # Proxy the streams.

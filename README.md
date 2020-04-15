@@ -55,19 +55,23 @@ source path/to/lightning/contrib/startup_testnet1.sh
 start_ln
 
 # Lets set some remote node variables to help us later
-export REMOTE_GID="111"
+export REMOTE_GID="<gid>"
 export REMOTE_PUBKEY="<pubkey>"
-export REMOTE_PORT="<port>"
+export REMOTE_ADDRESS="<host>:<port>"
+# LISTEN_PORT specifies which port Lnproxy will listen on for new 
+# incoming connections for this node, separate to the C-Lightning
+# listening port
+export LISTEN_PORT="<listening port>"
 
 # Fund the wallet as usual, e.g.:
 l1-cli newaddr
 # Send tBTC to the address
 
 # Add a remote node to lnproxy plugin router
-l1-cli add-node $REMOTE_GID $REMOTE_PUBKEY
+l1-cli add-node $REMOTE_GID $REMOTE_PUBKEY $REMOTE_ADDRESS $LISTEN_PORT
 
 # Make a connection to the remote node
-l1-cli proxy-connect $REMOTE_GID $REMOTE_PORT
+l1-cli proxy-connect $REMOTE_GID
 
 # Open a private outbound channel with remote node
 l1-cli fundchannel id=$REMOTE_PUBKEY amount=100000 feerate=10000 announce=false
@@ -98,7 +102,7 @@ To make an outbound connection from node 1, use the `proxy-connect` command with
 ```bash
 # Now begin outbound connection from l1 to l2. If you are using alternative transport (e.g. fldigi), use the fldigi listening tcp_port
 
-l1-cli proxy-connect $(l2-cli gid) <remote_port>
+l1-cli proxy-connect $(l2-cli gid)
 ```
 
 The connection should occur automatically from here, you will need to fund the wallet and open a channel as normal.
@@ -167,7 +171,7 @@ tail -f /path/to/config_dir/log
 Next we need to add the node gid:pubkey pair of any node we will connect to into the plugin router, e.g.:
 
 ```bash
-lcli add-node <remote_gid> <remote_pubkey>
+lcli add-node <remote_gid> <remote_pubkey> <remote_host:remote_port> <listening_port>
 ```
 
 This will echo a listening TCP port for the added node. If you want to accept an incoming connection from this node, you should direct it to this port.
@@ -175,7 +179,7 @@ This will echo a listening TCP port for the added node. If you want to accept an
 To make an outbound connection, you can use the `proxy-connect` command. This will internally pass the connection through lnproxy and then make the onward connection to the specified tcp_port:
 
 ```bash
-lcli proxy-connect <remote_GID> <remote_port>
+lcli proxy-connect <remote_GID>
 ```
 
 You should see returned 'ID' field indicating connection is complete. Next, we can try to open some channels:

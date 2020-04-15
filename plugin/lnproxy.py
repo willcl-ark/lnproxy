@@ -54,6 +54,15 @@ def show_router(plugin=None):
     return str(config.router)
 
 
+@plugin.method("node-addr")
+def node_addr(gid, plugin=None):
+    """Returns the nodes' address in host:port format.
+    """
+    _node = config.router.get_node(gid)
+    logger.debug(f"Node address: {_node.host_remote}:{_node.port_remote}")
+    return f"{_node.host_remote}:{_node.port_remote}"
+
+
 @plugin.method("gid")
 def get_gid(plugin=None):
     """Returns the GID used by this node.
@@ -62,11 +71,12 @@ def get_gid(plugin=None):
 
 
 @plugin.method("add-node")
-def add_node(gid, pubkey, plugin=None):
+def add_node(gid, pubkey, remote_address, listen_port, plugin=None):
     """Add a node to the plugin routing table.
     arg: gid: integer (within 0 < n < MAX_GID range from config.ini)
     arg: pubkey: a lightning pubkey
-    arg: tcp_port: the TCP port this node can be connected to with
+    arg: remote_address: string: host IP address:port used to connect to this node, e.g. "127.0.0.1:9735"
+    arg: listen_port: the port this node will listen for incoming connections on
     """
     _gid = int(gid)
     # Check that GID and pubkey are valid according to config.MAX_GID
@@ -90,14 +100,15 @@ def add_node(gid, pubkey, plugin=None):
             f"Pubkey {pubkey} already in router, remove before adding again: "
             f"{config.router.get_node(config.router.get_gid(pubkey))}"
         )
+    _host, _port = remote_address.split(":")
 
     # Create the node
-    _node = network.Node(_gid, str(pubkey))
+    _node = network.Node(_gid, str(pubkey), _host, int(_port), listen_port)
     # Add to the router
     config.router.add(_node)
     return (
         f"{_node.gid} added to plugin router and "
-        f"listening for incoming connections on port: {_node.port_remote_listen}"
+        f"listening for incoming connections on port: {_node.port_listen}"
     )
 
 
@@ -117,11 +128,9 @@ def remove_node(gid, plugin=None):
 
 # noinspection PyIncorrectDocstring
 @plugin.method("proxy-connect")
-def proxy_connect(gid, tcp_port, plugin=None):
+def proxy_connect(gid, plugin=None):
     """Connect to a remote node via lnproxy.
-
     :param gid: int: gid of node in router to connect to
-    :param tcp_port: int: tcp port the onward connection will connect to
     """
     try:
         node = config.router.get_node(int(gid))
@@ -129,13 +138,6 @@ def proxy_connect(gid, tcp_port, plugin=None):
         return f"Could not find GID {gid} in router, try adding first.\n{e}"
     logging.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
 
-    # Warn if it outside "safe" range
-    if int(tcp_port) not in range(49152, 65535):
-        logger.warning(
-            f"TCP port selected for node not within recommended range: 49152 - 65535"
-        )
-
-    node.port_remote_out = int(tcp_port)
     node.listen_addr = f"/tmp/0{uuid.uuid4().hex}"
     node.rpc = plugin.rpc
     node.outbound = True
@@ -236,7 +238,9 @@ def init(options, configuration, plugin):
 
     # Add ourselves to the routing table
     _node = network.Node(
-        int(plugin.get_option("gid")), str(config.node_info["id"]), listen=False
+        gid=int(plugin.get_option("gid")),
+        pubkey=str(config.node_info["id"]),
+        listen=False
     )
     trio.from_thread.run_sync(config.router.add, _node)
 
