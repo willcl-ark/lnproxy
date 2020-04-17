@@ -100,7 +100,7 @@ class EncryptedMessage:
         :returns:
             None
         """
-        if not len(self.send_id) == 1:
+        if not len(self.send_id) == config.user.getint("message", "SEND_ID_LEN"):
             raise ValueError(
                 f"sender_id is too long: {len(self.send_id)} bytes vs allowed: 1 byte"
             )

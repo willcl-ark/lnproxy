@@ -27,15 +27,7 @@ config.router = network.Router()
 # Set how many bytes to use for GID shortening. GID will be shortened using:
 # GID % (256 * send_id_len) which is equivalent to send_id_len bytes.
 # e.g. 1 byte is good for 256 unique GIDs (less collisions)
-send_id_len = config.user["message"].getint("SEND_ID_LEN")
-
-
-plugin.add_option(
-    name="gid",
-    default=None,
-    description="A GID for the transport layer to use",
-    opt_type="int",
-)
+send_id_len = config.user.getint("message", "SEND_ID_LEN")
 
 
 plugin.add_option(
@@ -63,25 +55,22 @@ def node_addr(gid, plugin=None):
     return f"{_node.host_remote}:{_node.port_remote}"
 
 
-@plugin.method("gid")
-def get_gid(plugin=None):
-    """Returns the GID used by this node.
-    """
-    return plugin.get_option("gid")
-
-
 @plugin.method("add-node")
-def add_node(gid, pubkey, remote_address, listen_port, plugin=None):
+def add_node(pubkey, remote_address, listen_port, plugin=None):
     """Add a node to the plugin routing table.
-    arg: gid: integer (within 0 < n < MAX_GID range from config.ini)
     arg: pubkey: a lightning pubkey
     arg: remote_address: string: host IP address:port used to connect to this node, e.g. "127.0.0.1:9735"
     arg: listen_port: the port this node will listen for incoming connections on
+    arg: gid: integer (within 0 < n < MAX_GID range from config.py)
     """
-    _gid = int(gid)
+    gid = int(pubkey, 16) % (send_id_len * 256)
+    print(f"pubkey={pubkey}")
+    print(f"remote_add={remote_address}")
+    print(f"listen_port={listen_port}")
+    print(f"gid={gid}")
     # Check that GID and pubkey are valid according to config.MAX_GID
-    if not 0 <= _gid <= config.MAX_GID:
-        return f"GID {_gid} not in range 0 <= GID <= {config.MAX_GID}"
+    if not 0 <= gid <= config.MAX_GID:
+        return f"GID {gid} not in range 0 <= GID <= {config.MAX_GID}"
     # Test the pubkey is valid
     try:
         _pubkey = PublicKey(pubkey=bytes.fromhex(pubkey), raw=True)
@@ -90,10 +79,10 @@ def add_node(gid, pubkey, remote_address, listen_port, plugin=None):
         return f"Error with pubkey: {e}"
 
     # Check for dupes
-    if _gid in config.router:
+    if gid in config.router:
         return (
-            f"GID {_gid} already in router, remove before adding again: "
-            f"{config.router.get_node(_gid)}"
+            f"GID {gid} already in router, remove before adding again: "
+            f"{config.router.get_node(gid)}"
         )
     elif pubkey in config.router:
         return (
@@ -103,40 +92,40 @@ def add_node(gid, pubkey, remote_address, listen_port, plugin=None):
     _host, _port = remote_address.split(":")
 
     # Create the node
-    _node = network.Node(_gid, str(pubkey), _host, int(_port), listen_port)
+    _node = network.Node(gid, str(pubkey), _host, int(_port), listen_port)
     # Add to the router
     config.router.add(_node)
     return (
-        f"{_node.gid} added to plugin router and "
+        f"{_node.pubkey} added to plugin router and "
         f"listening for incoming connections on port: {_node.inbound_port}"
     )
 
 
 @plugin.method("remove-node")
-def remove_node(gid, plugin=None):
-    """Remove a node from the plugin router by GID
+def remove_node(pubkey, plugin=None):
+    """Remove a node from the plugin router by pubkey
     """
-    if gid not in config.router:
-        return f"GID {gid} not found in router."
+    if pubkey not in config.router:
+        return f"GID {pubkey} not found in router."
     try:
-        config.router.remove(gid)
+        config.router.remove(pubkey)
     except Exception as e:
         return f"Error removing node from router: {e}"
     else:
-        return f"Node with GID {gid} removed from router."
+        return f"Node {pubkey} removed from router."
 
 
 # noinspection PyIncorrectDocstring
 @plugin.method("proxy-connect")
-def proxy_connect(gid, plugin=None):
+def proxy_connect(pubkey, plugin=None):
     """Connect to a remote node via lnproxy.
-    :param gid: int: gid of node in router to connect to
+    :param pubkey: str: pubkey of node in router to connect to
     """
     try:
-        node = config.router.get_node(int(gid))
+        node = config.router.by_pubkey[pubkey]
     except LookupError as e:
-        return f"Could not find GID {gid} in router, try adding first.\n{e}"
-    logger.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
+        return f"Could not find GID {pubkey} in router.\n{e}"
+    logger.debug(f"proxy-connect to node {node.pubkey} via lnproxy plugin")
 
     node.rpc = plugin.rpc
     node.outbound = True
@@ -148,23 +137,20 @@ def proxy_connect(gid, plugin=None):
 
 @plugin.method("message")
 def message(
-    gid, message_string, msatoshi: int = 100_000, plugin=None,
+    pubkey, message_string, msatoshi: int = 100_000, plugin=None,
 ):
     """Send a message via the remote, paid for using key-send (non-interactive)
     args: gid, message_string, msatoshi: default=100000
     """
-    # Get the destination pubkey from the router
-    dest_pubkey = config.router.get_pubkey(gid)
-
     # Get a unique "sender_id" which receiver can use to lookup sender pubkey
     # sender_id will be 1 byte long as this allows 256 GID values, enough for now
-    sender_id = (int(plugin.get_option("gid")) % 256).to_bytes(send_id_len, "big")
+    sender_id = config.gid.to_bytes(send_id_len, "big")
 
     # Create the encrypted message payload
     _message = EncryptedMessage(
         send_sk=config.node_secret_key,
         send_id=sender_id,
-        recv_pk=dest_pubkey,
+        recv_pk=pubkey,
         plain_text=message_string,
     )
     try:
@@ -179,7 +165,7 @@ def message(
         logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
-    description = f"{uuid.uuid4().hex} encrypted message to {_message.recv_pk}"
+    description = f"Encrypted message for {_message.recv_pk}: {uuid.uuid4().hex}"
 
     # Store message object for later.
     # The proxy will add the encrypted message onto the outbound htlc_add_update message
@@ -225,7 +211,7 @@ def check_onion_tool(_plugin):
 def init(options, configuration, plugin):
     logger.info("Starting lnproxy plugin")
 
-    # Check the onion tool path is valid file
+    # Check the onion tool path is a valid file
     check_onion_tool(plugin)
 
     # Store the RPC in config to be accessible by all modules.
@@ -236,10 +222,9 @@ def init(options, configuration, plugin):
     logger.debug(config.node_info)
 
     # Add ourselves to the routing table
+    config.gid = int(config.node_info["id"], 16) % (send_id_len * 256)
     _node = network.Node(
-        gid=int(plugin.get_option("gid")),
-        pubkey=str(config.node_info["id"]),
-        listen=False,
+        gid=int(config.gid), pubkey=str(config.node_info["id"]), listen=False,
     )
     trio.from_thread.run_sync(config.router.add, _node)
 

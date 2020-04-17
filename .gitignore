@@ -3,3 +3,4 @@
 onion.dat
 /lnproxy.egg-info/
 /dist/
+lnproxy_core/private.py

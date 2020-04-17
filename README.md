@@ -55,7 +55,6 @@ source path/to/lightning/contrib/startup_testnet1.sh
 start_ln
 
 # Lets set some remote node variables to help us later
-export REMOTE_GID="<gid>"
 export REMOTE_PUBKEY="<pubkey>"
 export REMOTE_ADDRESS="<host>:<port>"
 # LISTEN_PORT specifies which port Lnproxy will listen on for new 
@@ -68,10 +67,10 @@ l1-cli newaddr
 # Send tBTC to the address
 
 # Add a remote node to lnproxy plugin router
-l1-cli add-node $REMOTE_GID $REMOTE_PUBKEY $REMOTE_ADDRESS $LISTEN_PORT
+l1-cli add-node $REMOTE_PUBKEY $REMOTE_ADDRESS $LISTEN_PORT
 
 # Make a connection to the remote node
-l1-cli proxy-connect $REMOTE_GID
+l1-cli proxy-connect $REMOTE_PUBKEY
 
 # Open a private outbound channel with remote node
 l1-cli fundchannel id=$REMOTE_PUBKEY amount=100000 feerate=10000 announce=false
@@ -80,7 +79,7 @@ l1-cli fundchannel id=$REMOTE_PUBKEY amount=100000 feerate=10000 announce=false
 l1-cli pay <bolt11_invoice_from_remote_node>
 
 # Send a "message"/spontaneous payment to remote node
-l1-cli waitsendpay $(l1-cli message $REMOTE_GID $(openssl rand -hex 12) 100000 | jq -r '.payment_hash')
+l1-cli waitsendpay $(l1-cli message $REMOTE_PUBKEY $(openssl rand -hex 12) 100000 | jq -r '.payment_hash')
 ```
 
 ## Quick run, testnet, two local nodes:
@@ -102,7 +101,7 @@ To make an outbound connection from node 1, use the `proxy-connect` command with
 ```bash
 # Now begin outbound connection from l1 to l2. If you are using alternative transport (e.g. fldigi), use the fldigi listening tcp_port
 
-l1-cli proxy-connect $(l2-cli gid)
+l1-cli proxy-connect $(l2-cli getinfo | jq .id)
 ```
 
 The connection should occur automatically from here, you will need to fund the wallet and open a channel as normal.
@@ -171,7 +170,7 @@ tail -f /path/to/config_dir/log
 Next we need to add the node gid:pubkey pair of any node we will connect to into the plugin router, e.g.:
 
 ```bash
-lcli add-node <remote_gid> <remote_pubkey> <remote_host:remote_port> <listening_port>
+lcli add-node <remote_pubkey> <remote_host:remote_port> <listening_port>
 ```
 
 This will echo a listening TCP port for the added node. If you want to accept an incoming connection from this node, you should direct it to this port.
@@ -179,7 +178,7 @@ This will echo a listening TCP port for the added node. If you want to accept an
 To make an outbound connection, you can use the `proxy-connect` command. This will internally pass the connection through lnproxy and then make the onward connection to the specified tcp_port:
 
 ```bash
-lcli proxy-connect <remote_GID>
+lcli proxy-connect <remote_pubkey>
 ```
 
 You should see returned 'ID' field indicating connection is complete. Next, we can try to open some channels:
@@ -208,7 +207,7 @@ To attempt a "spontaneous send" payment with encrypted message, use the "message
 export MESSAGE="$(openssl rand -hex 12)"
 
 # Using waitsendpay will wait synchronously until payment succeeds or fails
-lcli waitsendpay $(lcli message <remote_gid> $MESSAGE 100000 | jq .payment_hash)
+lcli waitsendpay $(lcli message <remote_pubkey> $MESSAGE 100000 | jq .payment_hash)
 ```
 
 The "message" RPC implements a keysend-like functionality: we know about the recipient in our (plugin) routing table, even though C-Lightning doesn't know about them (no gossip exchanged via l2). This means we can send them a message encrypted with their pubkey (using ECIES where nonce=payment_hash[0:16]) and where only recipient can decrypt the preimage (sha256(decrypted_message).digest()).

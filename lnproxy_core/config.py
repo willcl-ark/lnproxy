@@ -80,3 +80,4 @@ CLTV_d: int = 6
 MAX_GID: int = 0xFFFFFFFFFFFF
 router = None
 onion_tool_path = None
+gid = None

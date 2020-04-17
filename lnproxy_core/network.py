@@ -195,17 +195,17 @@ class Router:
         self.by_short_gid[node.short_gid] = node
         logger.info(f"Added node {node} to router.")
 
-    def remove(self, gid: int):
+    def remove(self, pubkey: int):
         """Remove a node from the router by gid or pubkey.
         """
         for node in self.nodes:
-            if node.gid == gid:
+            if node.gid == pubkey:
                 self.nodes.remove(node)
-                del self.by_gid[gid]
-                del self.by_pubkey[node.pubkey]
-                logger.info(f"Removed node {node} from router.")
+                del self.by_gid[node.gid]
+                del self.by_pubkey[pubkey]
+                logger.info(f"Removed node {node.pubkey} from router.")
                 return
-        raise LookupError(f"GID {gid} not found in Router")
+        raise LookupError(f"GID {pubkey} not found in Router")
 
     def get_pubkey(self, gid: int):
         """Returns pubkey of first GID matched in self.nodes.
