@@ -20,20 +20,20 @@ First install libsecp256k1 from source as per the [project installation instruct
 
 ### C Lightning installation
 
-Clone my lightning branch which includes this repo as a subtree inside the default "plugins" directory:
+Clone my lightning branch which includes Sauron plugin (so we don't need testnet bitcoind data):
 
 ```bash
 git clone https://github.com/willcl-ark/lightning.git
 cd lightning
-git checkout mesh-plugin
+git checkout mesh-master
 
-# Setup and activate a virtualenv for this project (e.g. pyenv) and install requirements
+# Setup and activate a virtualenv for the lightning branch (with e.g. pyenv) and install lnproxy and C-lightning requirements
+pip install lnproxy
 pip install -r requirements.txt
 pip install -r plugins/sauron/requirements.txt
-pip install -r plugins/lnproxy/requirements.txt
 ```
 
-Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-plugin/doc/INSTALL.md)
+Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md)
 
 This branch includes two plugins by default:
 
@@ -42,10 +42,8 @@ This branch includes two plugins by default:
 
 ## Quick run, testnet, single local node:
 
-Source the helper functions from `path_to/lightning/contrib/startup_testnet1.sh`.
-
 ```bash
-# Lets export the GID we'll use for ourselves (in range 1 < x < 255)
+# Lets export the GID we'll use for ourselves (in range 1 <= x <= 255)
 export GID="111"
 
 # Now we'll source the helper scripts

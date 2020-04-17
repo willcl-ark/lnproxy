@@ -3,10 +3,7 @@ import logging
 import struct
 import uuid
 
-import src.config as config
-import src.crypto as crypto
-import src.onion as onion
-import src.util as util
+from lnproxy_core import config, crypto, onion, util
 
 logger = util.CustomAdapter(logging.getLogger("msg"), None)
 send_id_len = config.user["message"].getint("SEND_ID_LEN")

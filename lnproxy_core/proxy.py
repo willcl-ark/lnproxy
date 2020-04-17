@@ -2,9 +2,7 @@ import logging
 
 import trio
 
-import src.config as config
-import src.messages as msg
-import src.util as util
+from lnproxy_core import config, messages as msg, util
 
 logger = util.CustomAdapter(logging.getLogger("proxy"), None)
 

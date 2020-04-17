@@ -1,15 +1,31 @@
-"""USER VALUES SHOULD BE CHANGED IN CONFIG.INI FILE, NOT IN HERE
+"""USER VALUES SHOULD BE CHANGED IN ~/.config/lnproxy/config.ini, NOT IN HERE
 """
-
-# User config import
 import configparser
 import os
+from shutil import copyfile
 
+home = os.path.expanduser("~")
+user_config_dir = home + "/.config/lnproxy/"
+user_config_file = user_config_dir + "config.ini"
+
+
+def get_user_config():
+    """Get user config, creating new from sample if necessary
+    """
+    if not os.path.exists(user_config_dir):
+        os.makedirs(user_config_dir)
+    if not os.path.exists(user_config_file):
+        print(f"Config file not found, copying sample config into {user_config_file}")
+        sample_config_file = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
+        )
+        copyfile(sample_config_file, user_config_file)
+
+
+get_user_config()
 user = configparser.ConfigParser()
-config_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
-)
-user.read(config_path)
+user.read(user_config_file)
+
 
 # --------------------------------------------------------------------------------------
 """BigSize struct formatting codes

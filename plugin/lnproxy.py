@@ -3,13 +3,13 @@ import logging
 import uuid
 from pathlib import Path
 
-import src.config as config
-import src.network as network
 import trio
 from pyln.client import Plugin
 from secp256k1 import PublicKey
-from src.messages import EncryptedMessage
-from src.pk_from_hsm import get_privkey
+
+from lnproxy_core import config, network
+from lnproxy_core.messages import EncryptedMessage
+from lnproxy_core.pk_from_hsm import get_privkey
 
 # Initialise the plugin
 plugin = Plugin()
@@ -41,7 +41,7 @@ plugin.add_option(
 plugin.add_option(
     name="onion-tool-path",
     default="~/src/lightning/devtools/onion",
-    description="Path to C-Lightning's onion tool (in \"lightning/devtools\" folder)",
+    description='Path to C-Lightning\'s onion tool (in "lightning/devtools" folder)',
     opt_type="string",
 )
 
@@ -240,7 +240,7 @@ def init(options, configuration, plugin):
     _node = network.Node(
         gid=int(plugin.get_option("gid")),
         pubkey=str(config.node_info["id"]),
-        listen=False
+        listen=False,
     )
     trio.from_thread.run_sync(config.router.add, _node)
 

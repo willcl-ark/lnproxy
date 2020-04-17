@@ -1,4 +1,4 @@
-/src/__pycache__/
+/lnproxy_core/__pycache__/
 .python-version
 onion.dat
 /lnproxy.egg-info/

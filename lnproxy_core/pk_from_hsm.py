@@ -9,10 +9,10 @@ import hashlib
 import logging
 
 import hkdf
-import lightning
 import secp256k1
+from pyln.client import LightningRpc
 
-from src.util import CustomAdapter
+from lnproxy_core.util import CustomAdapter
 
 logger = CustomAdapter(logging.getLogger("pkhsm"), None)
 nodes = [0, 1, 2]
@@ -59,7 +59,7 @@ def get_privkey(ln_dir, known_pubkey: str):
 def main():
     for node in nodes:
         ln_dir = f"/tmp/l{node + 1}-regtest/regtest"
-        ln = lightning.LightningRpc(f"{ln_dir}/lightning-rpc")
+        ln = LightningRpc(f"{ln_dir}/lightning-rpc")
         pubkey = ln.getinfo()["id"]
         logger.info(f"Node {node +1}:")
         logger.info(f"privkey: {get_privkey(ln_dir, pubkey)}")

@@ -3,9 +3,8 @@ import pathlib
 
 import trio
 
-import src.config as config
-from src.proxy import Proxy
-from src.util import CustomAdapter, unlink_socket
+from lnproxy_core import config, proxy
+from lnproxy_core.util import CustomAdapter, unlink_socket
 
 logger = CustomAdapter(logging.getLogger("network"), None)
 
@@ -91,7 +90,7 @@ class Node:
 
         # Next proxy between the queue and the node.
         # q_init is True because remote is handshake initiator.
-        self.proxy = Proxy(self, stream_init=False, q_init=True)
+        self.proxy = proxy.Proxy(self, stream_init=False, q_init=True)
         try:
             await self.proxy.start()
         except (Exception, trio.MultiError):
@@ -129,7 +128,7 @@ class Node:
 
         # Proxy the streams.
         # stream_init is True because we are handshake initiator.
-        self.proxy = Proxy(self, stream_init=True, q_init=False)
+        self.proxy = proxy.Proxy(self, stream_init=True, q_init=False)
         try:
             await self.proxy.start()
         except (Exception, trio.MultiError):

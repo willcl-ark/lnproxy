@@ -7,7 +7,7 @@ from typing import Union
 
 import trio.testing
 
-import src.config as config
+from lnproxy_core import config
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
