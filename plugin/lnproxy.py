@@ -108,7 +108,7 @@ def add_node(gid, pubkey, remote_address, listen_port, plugin=None):
     config.router.add(_node)
     return (
         f"{_node.gid} added to plugin router and "
-        f"listening for incoming connections on port: {_node.port_listen}"
+        f"listening for incoming connections on port: {_node.inbound_port}"
     )
 
 
@@ -136,9 +136,8 @@ def proxy_connect(gid, plugin=None):
         node = config.router.get_node(int(gid))
     except LookupError as e:
         return f"Could not find GID {gid} in router, try adding first.\n{e}"
-    logging.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
+    logger.debug(f"proxy-connect to gid {node.gid} via lnproxy plugin")
 
-    node.listen_addr = f"/tmp/0{uuid.uuid4().hex}"
     node.rpc = plugin.rpc
     node.outbound = True
 
