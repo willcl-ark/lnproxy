@@ -35,7 +35,7 @@ pip install -r requirements.txt
 pip install -r plugins/sauron/requirements.txt
 ```
 
-Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md)
+Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag.
 
 This branch includes two plugins by default:
 
