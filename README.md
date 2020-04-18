@@ -27,7 +27,7 @@ Clone my lightning branch which includes Lnproxy and Sauron plugins (so we don't
 ```bash
 git clone https://github.com/willcl-ark/lightning.git
 cd lightning
-git checkout mesh-master
+git checkout lnproxy
 
 # Setup and activate a virtualenv for the lightning branch (with e.g. pyenv) and install lnproxy and C-lightning requirements
 pip install lnproxy
