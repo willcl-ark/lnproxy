@@ -47,10 +47,13 @@ def show_router(plugin=None):
 
 
 @plugin.method("node-addr")
-def node_addr(gid, plugin=None):
+def node_addr(pubkey, plugin=None):
     """Returns the nodes' address in host:port format.
     """
-    _node = config.router.get_node(gid)
+    try:
+        _node = config.router.by_pubkey[pubkey]
+    except LookupError:
+        return f"Node {pubkey} not found in router. Run `show-router` to see router."
     logger.debug(f"Node address: {_node.host_remote}:{_node.port_remote}")
     return f"{_node.host_remote}:{_node.port_remote}"
 
@@ -61,13 +64,12 @@ def add_node(pubkey, remote_address, listen_port, plugin=None):
     arg: pubkey: a lightning pubkey
     arg: remote_address: string: host IP address:port used to connect to this node, e.g. "127.0.0.1:9735"
     arg: listen_port: the port this node will listen for incoming connections on
-    arg: gid: integer (within 0 < n < MAX_GID range from config.py)
     """
     gid = int(pubkey, 16) % (send_id_len * 256)
     print(f"pubkey={pubkey}")
     print(f"remote_add={remote_address}")
     print(f"listen_port={listen_port}")
-    print(f"gid={gid}")
+    print(f"generated_gid={gid}")
     # Check that GID and pubkey are valid according to config.MAX_GID
     if not 0 <= gid <= config.MAX_GID:
         return f"GID {gid} not in range 0 <= GID <= {config.MAX_GID}"
@@ -79,15 +81,14 @@ def add_node(pubkey, remote_address, listen_port, plugin=None):
         return f"Error with pubkey: {e}"
 
     # Check for dupes
-    if gid in config.router:
-        return (
-            f"GID {gid} already in router, remove before adding again: "
-            f"{config.router.get_node(gid)}"
-        )
-    elif pubkey in config.router:
+    # Generate a unique GID if it already exists.
+    # TODO: could cause issues
+    while gid in config.router:
+        gid = gid + 1
+    if pubkey in config.router:
         return (
             f"Pubkey {pubkey} already in router, remove before adding again: "
-            f"{config.router.get_node(config.router.get_gid(pubkey))}"
+            f"{config.router.by_pubkey[pubkey]}"
         )
     _host, _port = remote_address.split(":")
 
@@ -106,7 +107,7 @@ def remove_node(pubkey, plugin=None):
     """Remove a node from the plugin router by pubkey
     """
     if pubkey not in config.router:
-        return f"GID {pubkey} not found in router."
+        return f"Node {pubkey} not found in router."
     try:
         config.router.remove(pubkey)
     except Exception as e:
@@ -115,7 +116,6 @@ def remove_node(pubkey, plugin=None):
         return f"Node {pubkey} removed from router."
 
 
-# noinspection PyIncorrectDocstring
 @plugin.method("proxy-connect")
 def proxy_connect(pubkey, plugin=None):
     """Connect to a remote node via lnproxy.
@@ -140,10 +140,9 @@ def message(
     pubkey, message_string, msatoshi: int = 100_000, plugin=None,
 ):
     """Send a message via the remote, paid for using key-send (non-interactive)
-    args: gid, message_string, msatoshi: default=100000
+    args: pubkey, message_string, msatoshi: default=100000
     """
     # Get a unique "sender_id" which receiver can use to lookup sender pubkey
-    # sender_id will be 1 byte long as this allows 256 GID values, enough for now
     sender_id = config.gid.to_bytes(send_id_len, "big")
 
     # Create the encrypted message payload
@@ -202,7 +201,7 @@ def check_onion_tool(_plugin):
     if not config.onion_tool_path.is_file():
         raise FileNotFoundError(
             f"onion-tool-path={str(config.onion_tool_path)} set in C-Lightning config "
-            f"does not point to onion tool file."
+            f"does not point to a file."
         )
 
 

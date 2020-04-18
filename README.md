@@ -45,16 +45,13 @@ This branch includes two plugins by default:
 ## Quick run, testnet, single local node:
 
 ```bash
-# Lets export the GID we'll use for ourselves (in range 1 <= x <= 255)
-export GID="111"
-
-# Now we'll source the helper scripts
+# Let's start by sourcing the helper scripts
 source path/to/lightning/contrib/startup_testnet1.sh
 
 # Start up C-Lightning
 start_ln
 
-# Lets set some remote node variables to help us later
+# Now set some remote node variables to help us later
 export REMOTE_PUBKEY="<pubkey>"
 export REMOTE_ADDRESS="<host>:<port>"
 # LISTEN_PORT specifies which port Lnproxy will listen on for new 
@@ -133,7 +130,6 @@ rescan=5
 
 # lnproxy config
 onion-tool-path=~/src/lightning/devtools/onion
-gid=123
 
 # sauron config
 disable-plugin=bcli
@@ -227,5 +223,4 @@ The "message" RPC implements a keysend-like functionality: we know about the rec
 - [ ] Calculate C_FEE and CLTV_DELTA on the fly from `getroute` rather than hardcoding
 
 - [ ] Integrate routing algorithm with the underlying goTenna routing
-    
     
