@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="lnproxy",
-    version="0.3.1",
+    version="0.3.2",
     author="Will Clark",
     author_email="will8clark@gmail.com",
     description="A C-Lightning transport proxy",
