@@ -1,8 +1,12 @@
 """USER VALUES SHOULD BE CHANGED IN ~/.config/lnproxy/config.ini, NOT IN HERE
 """
 import configparser
+import logging
 import os
 from shutil import copyfile
+
+logger = logging.getLogger("config")
+
 
 home = os.path.expanduser("~")
 user_config_dir = home + "/.config/lnproxy/"
@@ -15,7 +19,9 @@ def get_user_config():
     if not os.path.exists(user_config_dir):
         os.makedirs(user_config_dir)
     if not os.path.exists(user_config_file):
-        print(f"Config file not found, copying sample config into {user_config_file}")
+        logger.info(
+            f"Lnproxy config file not found, copying sample config into {user_config_dir}"
+        )
         sample_config_file = os.path.join(
             os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
         )
