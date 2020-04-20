@@ -35,7 +35,12 @@ pip install -r requirements.txt
 pip install -r plugins/sauron/requirements.txt
 ```
 
-Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag.
+Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag. We need this flag to disable gossip, minimising bandwidth used. If you've already compiled C-Lightning before this should work:
+
+```bash
+./configure --enable developer
+make
+```
 
 This branch includes two plugins by default:
 
@@ -213,14 +218,7 @@ The "message" RPC implements a keysend-like functionality: we know about the rec
 
 * There are some currently known issues with running on Debian via Qubes OS, so currently this OS config is not supported.
 
-# TODOs:
+## TODO:
 
-
-- [ ] Fix first hop routing selection
-
-- [x] Fix bi-directional messaging (add `push_msat` to channel open)
-
-- [ ] Calculate C_FEE and CLTV_DELTA on the fly from `getroute` rather than hardcoding
-
-- [ ] Integrate routing algorithm with the underlying goTenna routing
+Can be found [here](TODO.md)
     
