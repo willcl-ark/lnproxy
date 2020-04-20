@@ -30,10 +30,10 @@ Patch C-Lightning with noencrypt patch to disable lightning message encryption. 
 ```bash
 git clone https://github.com/willcl-ark/lightning.git
 cd lightning
-git checkout mesh
+git checkout lnproxy-gotenna
 ```
 
-Follow the remaining installation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/noencrypt-mesh/doc/INSTALL.md)
+Follow the remaining installation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/lnproxy-gotenna/doc/INSTALL.md)
 
 
 ### Lnproxy installation
