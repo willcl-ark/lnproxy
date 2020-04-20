@@ -59,16 +59,19 @@ def node_addr(pubkey, plugin=None):
 
 
 @plugin.method("add-node")
-def add_node(pubkey, remote_address, listen_port, plugin=None):
+def add_node(remote_node, listen_port, plugin=None):
     """Add a node to the plugin routing table.
-    arg: pubkey: a lightning pubkey
-    arg: remote_address: string: host IP address:port used to connect to this node, e.g. "127.0.0.1:9735"
-    arg: listen_port: the port this node will listen for incoming connections on
+    arg: remote_node: string: <pubkey>@<address>:<port> used to connect to the remote node e.g. "<pubkey>@127.0.0.1:9735"
+    arg: listen_port: the port this node will listen for incoming connections from the remote_node
     """
+    pubkey, remote_address = remote_node.split("@")
+    _host, _port = remote_address.split(":")
     gid = int(pubkey, 16) % (send_id_len * 256)
+
     print(f"pubkey={pubkey}")
-    print(f"remote_add={remote_address}")
-    print(f"listen_port={listen_port}")
+    print(f"remote_host={_host}")
+    print(f"remote_port={_port}")
+    print(f"local_listen_port={listen_port}")
     print(f"generated_gid={gid}")
     # Check that GID and pubkey are valid according to config.MAX_GID
     if not 0 <= gid <= config.MAX_GID:
@@ -90,7 +93,6 @@ def add_node(pubkey, remote_address, listen_port, plugin=None):
             f"Pubkey {pubkey} already in router, remove before adding again: "
             f"{config.router.by_pubkey[pubkey]}"
         )
-    _host, _port = remote_address.split(":")
 
     # Create the node
     _node = network.Node(gid, str(pubkey), _host, int(_port), listen_port)

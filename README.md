@@ -51,37 +51,60 @@ This branch includes two plugins by default:
 
 ```bash
 # Let's start by sourcing the helper scripts
-source path/to/lightning/contrib/startup_testnet1.sh
+source contrib/startup_testnet1.sh
 
 # Start up C-Lightning
 start_ln
 
-# Now set some remote node variables to help us later
-export REMOTE_PUBKEY="<pubkey>"
-export REMOTE_ADDRESS="<host>:<port>"
-# LISTEN_PORT specifies which port Lnproxy will listen on for new 
-# incoming connections for this node, separate to the C-Lightning
-# listening port
-export LISTEN_PORT="<listening port>"
+# You can tail the logs in a second terminal window with
+tail -f -n 50 /tmp/l1-testnet/log | cut -c26-
 
 # Fund the wallet as usual, e.g.:
 l1-cli newaddr
 # Send tBTC to the address
+```
 
+Next we are going to add a node to the lnproxy routing table. We can set some variables to help us:
+
+1. `LISTEN_PORT`: the port *you* will listen for incoming connections from the remote node. Open this port in any firewall you have.
+2. `REMOTE_PUBKEY`: the remote node's pubkey
+
+```bash
+export LISTEN_PORT="<local_open_port>"
+
+# Let's also export their pubkey for convenience
+export REMOTE_PUBKEY="<their_node_pubkey>"  
+```
+
+Now we can add the node to the Lnproxy router and make the connection:
+
+```bash
 # Add a remote node to lnproxy plugin router
-l1-cli add-node $REMOTE_PUBKEY $REMOTE_ADDRESS $LISTEN_PORT
+l1-cli add-node <remote_pubkey>@<remote_host>:<remote_port> $LISTEN_PORT
 
 # Make a connection to the remote node
 l1-cli proxy-connect $REMOTE_PUBKEY
+```
 
+After successful connection, we can fund a channel in the usual way:
+
+```bash
 # Open a private outbound channel with remote node
 l1-cli fundchannel id=$REMOTE_PUBKEY amount=100000 feerate=10000 announce=false
 
-# Pay a regular invoice without onion
-l1-cli pay <bolt11_invoice_from_remote_node>
+# You can check the status of the channel with
+l1-cli listfunds
+```
 
-# Send a "message"/spontaneous payment to remote node
-l1-cli waitsendpay $(l1-cli message $REMOTE_PUBKEY $(openssl rand -hex 12) 100000 | jq -r '.payment_hash')
+After the channel reaches status `CHANNELD_NORMAL`, we can begin to make a payment, two different payment types shown below:
+
+```bash
+# Pay a regular invoice without transmitting onion
+# First obtain a bolt11 invoice out-of-band
+l1-cli pay <bolt11_invoice>
+
+# Send a "message"/spontaneous payment/sphinx-send to remote node
+l1-cli waitsendpay $(l1-cli message $REMOTE_PUBKEY "<your_message_goes_here>" 100000 | jq -r '.payment_hash')
 ```
 
 ## Quick run, testnet, two local nodes:
@@ -103,7 +126,7 @@ To make an outbound connection from node 1, use the `proxy-connect` command with
 ```bash
 # Now begin outbound connection from l1 to l2. If you are using alternative transport (e.g. fldigi), use the fldigi listening tcp_port
 
-l1-cli proxy-connect $(l2-cli getinfo | jq .id)
+l1-cli proxy-connect $(l2-cli getinfo | jq -r .id)
 ```
 
 The connection should occur automatically from here, you will need to fund the wallet and open a channel as normal.
@@ -208,7 +231,7 @@ To attempt a "spontaneous send" payment with encrypted message, use the "message
 export MESSAGE="$(openssl rand -hex 12)"
 
 # Using waitsendpay will wait synchronously until payment succeeds or fails
-lcli waitsendpay $(lcli message <remote_pubkey> $MESSAGE 100000 | jq .payment_hash)
+lcli waitsendpay $(lcli message <remote_pubkey> $MESSAGE 100000 | jq -r .payment_hash)
 ```
 
 The "message" RPC implements a keysend-like functionality: we know about the recipient in our (plugin) routing table, even though C-Lightning doesn't know about them (no gossip exchanged via l2). This means we can send them a message encrypted with their pubkey (using ECIES where nonce=payment_hash[0:16]) and where only recipient can decrypt the preimage (sha256(decrypted_message).digest()).
