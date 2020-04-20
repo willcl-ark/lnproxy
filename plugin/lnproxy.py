@@ -175,9 +175,22 @@ def message(
     logger.debug(f"Stored message in config.key_sends[{_message.payment_hash}]")
 
     # Get first peer in route
-    # TODO: Improve routing here; tap into outourced routing table.
-    peer = config.rpc.listfunds()["channels"][0]["peer_id"]
-    logger.debug(f"Got first peer: {peer}")
+    # TODO: Improve routing here; tap into outsourced routing table.
+    peers = config.rpc.listfunds()["channels"]
+    # Check if we have a direct connection
+    if pubkey in [
+        peer["peer_id"]
+        for peer in peers
+        if peer["peer_id"] == pubkey and peer["connected"]
+    ]:
+        first_peer = pubkey
+    # Otherwise fallback to first connected peer
+    else:
+        first_peer = [peer["peer_id"] for peer in peers if peer["connected"]][0]
+    if not first_peer:
+        raise LookupError(f"Could not find any first peers to connect to in {peers}")
+
+    logger.debug(f"Got first peer: {first_peer}")
 
     # As we don't presume to have the full network graph here, we must guesstimate the
     # fees and CLTV somewhat here.
@@ -187,10 +200,10 @@ def message(
     cltv = 9 + 60
 
     # Get the route to the next hop.
-    route = config.rpc.getroute(peer, msatoshi=amt_msat, riskfactor=10, cltv=cltv)[
-        "route"
-    ]
-    logger.info(f"Got route to {peer}, executing sendpay command.")
+    route = config.rpc.getroute(
+        first_peer, msatoshi=amt_msat, riskfactor=10, cltv=cltv
+    )["route"]
+    logger.info(f"Got route to {first_peer}, executing sendpay command.")
 
     return config.rpc.sendpay(route, _message.payment_hash.hex(), description, amt_msat)
 
