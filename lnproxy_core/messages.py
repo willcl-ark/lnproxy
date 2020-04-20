@@ -241,13 +241,15 @@ class AddUpdateHTLC:
         config.rpc.invoice(
             msatoshi=self.amount_msat,
             label=f"{uuid.uuid1().hex}",
-            description=f"{uuid.uuid1().hex} Received keysend of {self.amount_msat}msat",
+            description=f"Received encrypted message: {decrypted_msg.decode()}",
             preimage=derived_preimage.hex(),
         )
 
         logger.info(
+            f"==================================\n"
             f"Received encrypted message for us!\n"
-            f"Decrypted message: {decrypted_msg.decode()}"
+            f"Decrypted message: {decrypted_msg.decode()}\n"
+            f"=================================="
         )
         # Remove the encrypted message
         self.payload = self.payload[0:84]

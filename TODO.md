@@ -10,5 +10,5 @@
 
 - [ ] Add note that LISTEN_PORT is required per node
 
-- [ ] Add encrypted message to invoice description
+- [x] Add encrypted message to invoice description
 
