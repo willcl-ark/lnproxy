@@ -10,8 +10,9 @@ from secp256k1 import PublicKey
 from lnproxy_core import config, network
 from lnproxy_core.messages import EncryptedMessage
 from lnproxy_core.pk_from_hsm import get_privkey
+from lnproxy_core.util import GracefulKiller
 
-# Initialise the plugin
+# Init plugin and logger
 plugin = Plugin()
 
 # Initialise the logger
@@ -262,6 +263,17 @@ def init(options, configuration, plugin):
     logger.info(f"lnproxy plugin initialised. Added RPC commands: {commands}")
 
 
+async def kill_watcher():
+    """Watches for SIGTERM from C-Lightnig and stops lnproxy cleanly
+    """
+    killer = GracefulKiller()
+    while not killer.kill_now:
+        await trio.sleep(1)
+        print("doing something in a loop ...")
+    print("SIGTERM detected, I was killed gracefully")
+    raise KeyboardInterrupt
+
+
 async def main():
     """Main function that is run when the plugin is loaded (and run) by C-Lightning.
     Function decorated with @plugin.init() will be run when `plugin.run()` is called
@@ -273,6 +285,7 @@ async def main():
             # We run the plugin itself in a synchronous thread so trio.run() maintains
             # overall control of the runtime.
             config.nursery.start_soon(trio.to_thread.run_sync, plugin.run)
+            config.nursery.start_soon(kill_watcher)
     except (Exception, trio.MultiError):
         logger.exception("Exception in lnproxy.main():")
     logger.info("lnproxy plugin exited.")

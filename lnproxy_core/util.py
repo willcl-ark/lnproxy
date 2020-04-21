@@ -2,6 +2,7 @@ import contextvars
 import hashlib
 import logging
 import pathlib
+import signal
 import struct
 from typing import Union
 
@@ -11,6 +12,17 @@ from lnproxy_core import config
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
+
+
+class GracefulKiller:
+    kill_now = False
+
+    def __init__(self):
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+
+    def exit_gracefully(self, signum, frame):
+        self.kill_now = True
 
 
 class CustomAdapter(logging.LoggerAdapter):
