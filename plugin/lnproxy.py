@@ -14,12 +14,9 @@ from lnproxy_core.util import GracefulKiller
 
 # Init plugin and logger
 plugin = Plugin()
-
-# Initialise the logger
-handler = logging.StreamHandler()
-bf = logging.Formatter("%(name)7s | %(levelname)8s | %(message)s")
-handler.setFormatter(bf)
-logging.basicConfig(level=logging.DEBUG, handlers=[handler])
+logging.basicConfig(
+    level=logging.DEBUG, format="%(name)7s | %(levelname)8s | %(message)s"
+)
 logger = logging.getLogger("lnproxy")
 
 # Initialise the plugin router, the router is not currently persisted to disk
@@ -194,7 +191,7 @@ def message(
     logger.debug(f"Got first peer: {first_peer}")
 
     # As we don't presume to have the full network graph here, we must guesstimate the
-    # fees and CLTV somewhat here.
+    # fees and CLTV somewhat.
     # We add 10 satoshis to amount (10 hops max x 1 satoshi fee each)
     # We add 60 to cltv (10 hops max, CLTV of 6 each)
     amt_msat = int(msatoshi) + 10
