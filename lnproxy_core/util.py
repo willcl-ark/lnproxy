@@ -41,16 +41,11 @@ class CustomAdapter(logging.LoggerAdapter):
 logger = CustomAdapter(logging.getLogger("util"), None)
 
 
-def unlink_socket(address: str):
-    """Unlink a Unix Socket at address 'address'.
-    """
-    socket_path = pathlib.Path(address)
-    try:
-        socket_path.unlink()
-    except OSError:
-        # Only log an error if the path exists but we can't unlink it, else ignore
-        if socket_path.exists():
-            logger.warning(f"Couldn't unlink socket {address}")
+def check_version(plugin_version):
+    if lnproxy_version != plugin_version:
+        raise ImportError(
+            f"Plugin version: {plugin_version}, does not match installed Lnproxy version: {lnproxy_version}"
+        )
 
 
 def get_my_payment_hashes() -> list:

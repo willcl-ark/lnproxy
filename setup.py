@@ -1,11 +1,18 @@
 import setuptools
 
+# Get version number
+version = {}
+with open("lnproxy_core/version.py") as fp:
+    exec(fp.read(), version)
+
+# Get Readme
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+
 setuptools.setup(
     name="lnproxy",
-    version="0.3.3",
+    version=version["__version__"],
     author="Will Clark",
     author_email="will8clark@gmail.com",
     description="A C-Lightning transport proxy",

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import logging
+import signal
 import uuid
 from pathlib import Path
 
@@ -7,10 +8,13 @@ import trio
 from pyln.client import Plugin
 from secp256k1 import PublicKey
 
-from lnproxy_core import config, network
-from lnproxy_core.messages import EncryptedMessage
-from lnproxy_core.pk_from_hsm import get_privkey
-from lnproxy_core.util import GracefulKiller
+import lnproxy_core as lnp
+
+plugin_version = "0.3.4"
+if lnp.__version__ != plugin_version:
+    raise ImportError(
+        f"Plugin version: {plugin_version}, does not match installed Lnproxy version: {lnp.__version__}"
+    )
 
 # Init plugin and logger
 plugin = Plugin()
