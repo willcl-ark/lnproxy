@@ -5,7 +5,7 @@ import uuid
 
 from lnproxy_core import config, crypto, onion, util
 
-logger = util.CustomAdapter(logging.getLogger("msg"), None)
+logger = util.CustomAdapter(logging.getLogger("msg"), {})
 send_id_len = config.user["message"].getint("SEND_ID_LEN")
 
 

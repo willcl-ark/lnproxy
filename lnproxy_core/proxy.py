@@ -4,7 +4,7 @@ import trio
 
 from lnproxy_core import config, messages as msg, util
 
-logger = util.CustomAdapter(logging.getLogger("proxy"), None)
+logger = util.CustomAdapter(logging.getLogger("proxy"), {})
 
 
 class Proxy:

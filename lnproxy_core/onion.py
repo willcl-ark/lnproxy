@@ -4,7 +4,7 @@ import subprocess
 
 from lnproxy_core import config, util
 
-logger = util.CustomAdapter(logging.getLogger("onion"), None)
+logger = util.CustomAdapter(logging.getLogger("onion"), {})
 
 
 def decode_hop_data(hop_data: bytes, layer=0):

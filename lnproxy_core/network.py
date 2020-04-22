@@ -5,7 +5,7 @@ import trio
 from lnproxy_core import config, proxy
 from lnproxy_core.util import CustomAdapter
 
-logger = CustomAdapter(logging.getLogger("network"), None)
+logger = CustomAdapter(logging.getLogger("network"), {})
 
 
 class Node:

@@ -14,7 +14,7 @@ from pyln.client import LightningRpc
 
 from lnproxy_core.util import CustomAdapter
 
-logger = CustomAdapter(logging.getLogger("pkhsm"), None)
+logger = CustomAdapter(logging.getLogger("pkhsm"), {})
 nodes = [0, 1, 2]
 
 

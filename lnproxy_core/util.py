@@ -38,7 +38,7 @@ class CustomAdapter(logging.LoggerAdapter):
             return f"{msg}", kwargs
 
 
-logger = CustomAdapter(logging.getLogger("util"), None)
+logger = CustomAdapter(logging.getLogger("util"), {})
 
 
 def check_version(plugin_version):
