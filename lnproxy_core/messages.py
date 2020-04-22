@@ -472,7 +472,7 @@ class LightningMessage:
     async def parse(self):
         """Parse a lightning message, optionally modify and then return it
         """
-        direction = "Sent" if self.to_remote else "Rcvd"
+        direction = "Send" if self.to_remote else "Recv"
 
         self.deserialize_body()
 

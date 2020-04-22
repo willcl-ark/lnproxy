@@ -150,7 +150,7 @@ class Node:
         )
         self.outbound_port = listeners[0].socket.getsockname()[1]
         logger.debug(
-            f"Listening on 127.000.0.001:{self.outbound_port} for outbound connections to node {self.gid}"
+            f"Listening on 127.0.0.1:{self.outbound_port} for outbound connections to node {self.gid}"
         )
         await trio.sleep(0.2)
 

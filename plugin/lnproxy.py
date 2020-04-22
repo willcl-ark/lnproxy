@@ -168,7 +168,7 @@ def message(
         logger.debug(f"Encrypted message:\n{_message.encrypted_msg.hex()}")
 
     # Create a pseudo-random description to satisfy C-Lightning's accounting system
-    description = f"Encrypted message for {_message.recv_pk}: {uuid.uuid4().hex}"
+    description = f"Encrypted message: {uuid.uuid4().hex}"
 
     # Store message object for later.
     # The proxy will add the encrypted message onto the outbound htlc_add_update message

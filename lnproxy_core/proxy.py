@@ -44,7 +44,15 @@ class Proxy:
         """
         if i < hs_acts:
             message = await msg.HandshakeMessage.from_stream(stream, i, initiator)
-            logger.debug(f"Read HS message {i}")
+            _direction = "Sent" if to_remote else "Rcvd"
+            _c = 0
+            if initiator and i == 0:
+                _c = 1
+            elif initiator and i == 1:
+                _c = 3
+            elif not initiator and i == 0:
+                _c = 2
+            logger.debug(f"{_direction} HS message {_c}")
             return bytes(message.message)
         else:
             if to_remote:
@@ -75,11 +83,13 @@ class Proxy:
             message = bytearray()
             message += await self.read_message(read, i, hs_acts, initiator, True)
             i += 1
-            await write(message)
-            self.bytes_to_remote += len(message)
-            self.count_to_remote += 1
+            # This if handles the case that we reflect a ping and don't want to count it
+            if message:
+                await write(message)
+                self.bytes_to_remote += len(message)
+                self.count_to_remote += 1
             logger.debug(
-                f"Sent | "
+                f"SEND | "
                 f"read: {i}, "
                 f"sent: {self.count_to_remote}, "
                 f"total_size: {self.bytes_to_remote}B"
@@ -99,11 +109,13 @@ class Proxy:
         hs_acts = 2 if init else 1
         while True:
             message = await self.read_message(read, i, hs_acts, init, False)
-            await write(message)
             i += 1
-            self.bytes_from_remote += len(message)
+            # Handle ping as above
+            if message:
+                await write(message)
+                self.bytes_from_remote += len(message)
             logger.debug(
-                f"Rcvd | "
+                f"RECV | "
                 f"read: {i}, "
                 f"sent: {i}, "
                 f"total_size: {self.bytes_from_remote}B"
