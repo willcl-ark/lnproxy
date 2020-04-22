@@ -1,28 +1,15 @@
 import contextvars
 import hashlib
 import logging
-import pathlib
-import signal
 import struct
 from typing import Union
 
 import trio.testing
 
-from lnproxy_core import config
+from lnproxy_core import __version__ as lnproxy_version, config
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
-
-
-class GracefulKiller:
-    kill_now = False
-
-    def __init__(self):
-        signal.signal(signal.SIGINT, self.exit_gracefully)
-        signal.signal(signal.SIGTERM, self.exit_gracefully)
-
-    def exit_gracefully(self, signum, frame):
-        self.kill_now = True
 
 
 class CustomAdapter(logging.LoggerAdapter):
@@ -108,14 +95,6 @@ def get_short_chan_id(source: hex, dest: hex) -> bytes:
     _id += struct.pack(config.be_u32, tx_index)[-3:]
     _id += struct.pack(config.be_u16, output_index)
     return _id
-
-
-def check_onion_tool() -> bool:
-    onion = pathlib.Path(config.ONION_TOOL)
-    if onion.exists() and onion.is_file():
-        return True
-    logger.error(f"Onion tool not found at {config.ONION_TOOL}")
-    return False
 
 
 def hex_dump(data, length=16):

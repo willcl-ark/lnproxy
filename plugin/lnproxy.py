@@ -224,6 +224,15 @@ def check_onion_tool(_plugin):
         )
 
 
+def exit_gracefully(signum, frame):
+    raise KeyboardInterrupt(f"Killed by signal {signum}")
+
+
+# Register kill signal handlers
+signal.signal(signal.SIGINT, exit_gracefully)
+signal.signal(signal.SIGTERM, exit_gracefully)
+
+
 @plugin.init()
 # Parameters used by gotenna_plugin() internally
 def init(options, configuration, plugin):
@@ -266,17 +275,6 @@ def init(options, configuration, plugin):
     commands.remove("init")
     commands.remove("getmanifest")
     logger.info(f"lnproxy plugin initialised. Added RPC commands: {commands}")
-
-
-async def kill_watcher():
-    """Watches for SIGTERM from C-Lightnig and stops lnproxy cleanly
-    """
-    killer = GracefulKiller()
-    while not killer.kill_now:
-        await trio.sleep(1)
-        print("doing something in a loop ...")
-    print("SIGTERM detected, I was killed gracefully")
-    raise KeyboardInterrupt
 
 
 async def main():
