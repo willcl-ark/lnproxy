@@ -22,7 +22,10 @@ On Debian? See this [comment](https://github.com/ludbb/secp256k1-py/issues/24#is
 
 ### C Lightning installation
 
-Clone my lightning branch which includes Lnproxy and Sauron plugins (so we don't need testnet bitcoind data):
+Clone the C-Lightning branch below. This branch includes two plugins by default:
+
+1. Lnproxy (this plugin)
+1. [Sauron](https://github.com/lightningd/plugins/tree/master/sauron) (fetches blocks from blockstream.info, no need for bitcoind on testnet)
 
 ```bash
 git clone https://github.com/willcl-ark/lightning.git
@@ -30,22 +33,17 @@ cd lightning
 git checkout lnproxy
 
 # Setup and activate a virtualenv for the lightning branch (with e.g. pyenv) and install lnproxy and C-lightning requirements
+pip install --upgrade pip
 pip install lnproxy
 pip install -r requirements.txt
 pip install -r plugins/sauron/requirements.txt
 ```
 
-Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/mesh-master/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag. We need this flag to disable gossip, minimising bandwidth used. If you've already compiled C-Lightning before this should work:
+Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/lnproxy/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag. We need this flag to disable gossip, minimising bandwidth used. If you've already compiled C-Lightning before on your system, this will likely be enough:
 
 ```bash
-./configure --enable developer
-make
+./configure --enable developer && make
 ```
-
-This branch includes two plugins by default:
-
-1. Lnproxy (this plugin)
-1. [Sauron](https://github.com/lightningd/plugins/tree/master/sauron) (fetches blocks from blockstream.info, no need for bitcoind)
 
 ## Quick run, testnet, single local node:
 
@@ -138,7 +136,6 @@ After these commands have completed, you can move right onto the [payments](#inv
 
 See [manual_operation.md](manual_operation.md) for a more manual approach.
 
-First, lets setup an alias for cli/lightning-cli:
 
 ## Invoice payment
 
@@ -149,7 +146,7 @@ Now we have seen the `channel_update` messages for the channel, if you have, you
 lcli pay <bolt11_invoice>
 ```
 
-### Spontaneous sends
+## Spontaneous sends
 
 To attempt a "spontaneous send" payment with encrypted message, use the "message" command added to C-Lightning by the lnproxy plugin:
 
@@ -161,7 +158,9 @@ export MESSAGE="$(openssl rand -hex 12)"
 lcli waitsendpay $(lcli message <remote_pubkey> $MESSAGE 100000 | jq -r .payment_hash)
 ```
 
-The "message" RPC implements a keysend-like functionality: we know about the recipient in our (plugin) routing table, even though C-Lightning doesn't know about them (no gossip exchanged via l2). This means we can send them a message encrypted with their pubkey (using ECIES where nonce=payment_hash[0:16]) and where only recipient can decrypt the preimage (sha256(decrypted_message).digest()).
+The "message" RPC implements a keysend-like functionality: we know about the (final) recipient in our plugin routing table, even though C-Lightning doesn't know about them (no gossip exchanged via l2). This means we can send them a message encrypted with their pubkey (using ECIES where `nonce=payment_hash[0:16]`) and where only recipient can decrypt the preimage `(sha256(decrypted_message).digest())`.
+
+See [encryption.md](encryption.md) for more information on this.
 
 
 # Troubleshooting
