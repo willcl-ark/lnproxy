@@ -10,7 +10,7 @@ from pyln.client import Plugin
 
 import lnproxy_core as lnp
 
-plugin_version = "0.3.5"
+plugin_version = "0.3.6"
 if lnp.__version__ != plugin_version:
     raise ImportError(
         f"Plugin version: {plugin_version}, does not match installed Lnproxy version: {lnp.__version__}"
@@ -29,7 +29,7 @@ lnp.config.router = lnp.network.Router()
 # Set how many bytes to use for GID shortening. GID will be shortened using:
 # GID % (256 * send_id_len) which is equivalent to send_id_len bytes.
 # e.g. 1 byte is good for 256 unique GIDs (less collisions)
-send_id_len = lnp.config.user.getint("message", "SEND_ID_LEN")
+send_id_len = lnp.config.SEND_ID_LEN
 
 
 plugin.add_option(
