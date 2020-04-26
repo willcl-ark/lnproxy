@@ -5,12 +5,12 @@ import uuid
 from pathlib import Path
 
 import trio
+from coincurve import PublicKey
 from pyln.client import Plugin
-from secp256k1 import PublicKey
 
 import lnproxy_core as lnp
 
-plugin_version = "0.3.4"
+plugin_version = "0.3.5"
 if lnp.__version__ != plugin_version:
     raise ImportError(
         f"Plugin version: {plugin_version}, does not match installed Lnproxy version: {lnp.__version__}"
@@ -80,7 +80,7 @@ def add_node(remote_node, listen_port, plugin=None):
         return f"GID {gid} not in range 0 <= GID <= {lnp.config.MAX_GID}"
     # Test the pubkey is valid
     try:
-        _pubkey = PublicKey(pubkey=bytes.fromhex(pubkey), raw=True)
+        _pubkey = PublicKey(bytes.fromhex(pubkey))
     except Exception as e:
         logger.exception("Error converting to valid pubkey from hex string")
         return f"Error with pubkey: {e}"

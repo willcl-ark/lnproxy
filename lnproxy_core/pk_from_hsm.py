@@ -9,7 +9,7 @@ import hashlib
 import logging
 
 import hkdf
-import secp256k1
+from coincurve import PrivateKey
 from pyln.client import LightningRpc
 
 from lnproxy_core.util import CustomAdapter
@@ -29,13 +29,13 @@ def get_privkey(ln_dir, known_pubkey: str):
     # Small chance of the key produced not being valid to secp256k1 parameters, so test
     # and increase the salt until it is valid.
     i = 0
-    privkey = b""
+    private_key = b""
     while True and i < 1000:
         if i == 999:
             logger.error("No valid secp256k1 key found for hsm secret after 1000 salts")
             return False
         try:
-            privkey = secp256k1.PrivateKey(key)
+            private_key = PrivateKey(secret=key)
         except Exception:
             # invalid key
             i += 1
@@ -46,12 +46,12 @@ def get_privkey(ln_dir, known_pubkey: str):
             break
 
     # Check public key derived from the private key against node id
-    if not privkey.pubkey.serialize().hex() == known_pubkey:
+    if not private_key.public_key.format().hex() == known_pubkey:
         logger.warning(
             f"Valid secp265k1 derived pubkey doesn't appear to match "
             f"lightning node id:"
         )
-        logger.warning(f"generated: {privkey.pubkey.serialize().hex()}")
+        logger.warning(f"generated: {private_key.public_key.format().hex()}")
         logger.warning(f"actual:    {known_pubkey}")
     return key.hex()
 
