@@ -37,6 +37,9 @@ pip install --upgrade pip
 pip install lnproxy
 pip install -r requirements.txt
 pip install -r plugins/sauron/requirements.txt
+
+# Next run get-lnproxy.sh script to get the correct version of the plugin for your pip install
+. tools/get-lnproxy.sh
 ```
 
 Follow the remaining compilation instructions for your OS as found at [install C-Lightning](https://github.com/willcl-ark/lightning/blob/lnproxy/doc/INSTALL.md) making sure to follow the `./configure` step using `--enable-developer` flag. We need this flag to disable gossip, minimising bandwidth used. If you've already compiled C-Lightning before on your system, this will likely be enough:
