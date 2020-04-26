@@ -6,7 +6,7 @@ from typing import Union
 
 import trio.testing
 
-from lnproxy_core import __version__ as lnproxy_version, config
+from lnproxy_core import config
 
 # Context variable for connection log messages
 gid_key = contextvars.ContextVar("gid_key")
@@ -29,6 +29,8 @@ logger = CustomAdapter(logging.getLogger("util"), {})
 
 
 def check_version(plugin_version):
+    from lnproxy_core import __version__ as lnproxy_version
+
     if lnproxy_version != plugin_version:
         raise ImportError(
             f"Plugin version: {plugin_version}, does not match installed Lnproxy version: {lnproxy_version}"
