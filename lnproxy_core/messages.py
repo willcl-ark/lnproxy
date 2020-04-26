@@ -6,7 +6,7 @@ import uuid
 from lnproxy_core import config, crypto, onion, util
 
 logger = util.CustomAdapter(logging.getLogger("msg"), {})
-send_id_len = config.user["message"].getint("SEND_ID_LEN")
+send_id_len = config.SEND_ID_LEN
 
 
 codes = {
@@ -100,7 +100,7 @@ class EncryptedMessage:
         :returns:
             None
         """
-        if not len(self.send_id) == config.user.getint("message", "SEND_ID_LEN"):
+        if not len(self.send_id) == config.SEND_ID_LEN:
             raise ValueError(
                 f"sender_id is too long: {len(self.send_id)} bytes vs allowed: 1 byte"
             )

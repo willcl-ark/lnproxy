@@ -32,7 +32,7 @@ class Node:
         self.pubkey = pubkey
         self.rpc = None
         self.shared_key = shared_key
-        self.short_gid = gid % (256 * config.user.getint("message", "SEND_ID_LEN"))
+        self.short_gid = gid % (256 * config.SEND_ID_LEN)
         self.stream_c_lightning = None
         self.stream_remote = None
         if listen:

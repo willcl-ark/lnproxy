@@ -1,38 +1,7 @@
-"""USER VALUES SHOULD BE CHANGED IN ~/.config/lnproxy/config.ini, NOT IN HERE
-"""
-import configparser
 import logging
-import os
-from shutil import copyfile
 
 
 logger = logging.getLogger("config")
-
-
-home = os.path.expanduser("~")
-user_config_dir = home + "/.config/lnproxy/"
-user_config_file = user_config_dir + "config.ini"
-
-
-def get_user_config():
-    """Get user config, creating new from sample if necessary
-    """
-    if not os.path.exists(user_config_dir):
-        os.makedirs(user_config_dir)
-    if not os.path.exists(user_config_file):
-        logger.info(
-            f"Lnproxy config file not found, copying sample config into {user_config_dir}"
-        )
-        sample_config_file = os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "..", "config.ini"
-        )
-        copyfile(sample_config_file, user_config_file)
-
-
-get_user_config()
-user = configparser.ConfigParser()
-user.read(user_config_file)
-
 
 # --------------------------------------------------------------------------------------
 """BigSize struct formatting codes
@@ -58,33 +27,28 @@ ONION_SIZE: int = 1366
 MSG_MAC: int = 16
 channel_fee = 10
 # --------------------------------------------------------------------------------------
-"""Plugin
-"""
-rpc = None
-# --------------------------------------------------------------------------------------
 """Trio
 """
 nursery = None
-node_info = None
-node_secret_key = None
-key_sends = {}
-# --------------------------------------------------------------------------------------
-"""goTenna
-"""
-connection = None
 # --------------------------------------------------------------------------------------
 """Crypto
 """
 nonce = 0xD9B4BEF9 .to_bytes(16, "big")
 # --------------------------------------------------------------------------------------
-"""Misc
+"""C-Lightning
 """
-# TODO: These can be calculated on-the-fly from getroute
-#   we should hardcode CLTV used for all channel opens and routing fees
-#   Remember: CLTV is absolute (from blockheight), CSV is relative!!!
+rpc = None
 C_FEE: int = 2
 CLTV_d: int = 6
+onion_tool_path = None
+# --------------------------------------------------------------------------------------
+"""Plugin
+"""
+node_info = None
+node_secret_key = None
+key_sends = {}
 MAX_GID: int = 0xFFFFFFFFFFFF
 router = None
-onion_tool_path = None
 gid = None
+# How many bytes to use to generate a short_send_id
+SEND_ID_LEN = 1
