@@ -1,6 +1,7 @@
 import logging
 
 import trio
+from coincurve import PublicKey
 
 from lnproxy_core import config, proxy
 from lnproxy_core.util import CustomAdapter
@@ -35,7 +36,8 @@ class Node:
         self.short_gid = gid % (256 * config.SEND_ID_LEN)
         self.stream_c_lightning = None
         self.stream_remote = None
-        if listen:
+        self.listen = listen
+        if self.listen:
             trio.from_thread.run_sync(config.nursery.start_soon, self.serve_inbound)
 
     def __str__(self):
@@ -46,8 +48,9 @@ class Node:
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(gid={self.gid}, pubkey={self.pubkey}, "
-            f"port_listen={self.inbound_port}, shared_key={self.shared_key})"
+            f'{self.__class__.__name__}(gid={self.gid}, pubkey="{self.pubkey}", '
+            f'remote_host="{self.remote_host}", remote_port={self.remote_port}, '
+            f"inbound_port={self.inbound_port}, listen={self.listen})"
         )
 
     def __eq__(self, other):
@@ -189,20 +192,58 @@ class Router:
     def __str__(self):
         return f"Router with {self.__len__()} Nodes:\n{self.nodes}"
 
-    def add(self, node: Node):
+    def add(self, node: Node, write=True):
         """Add a node to the Router and make some handy lookup dicts.
+        Won't add a duplicate.
+        Will validate public key.
         """
+        # Check for dupes
+        if node.pubkey in config.router:
+            return (
+                f"Pubkey {node.pubkey} already in router, remove before adding again: "
+                f"{config.router.by_pubkey[node.pubkey]}"
+            )
+        # Check that GID and pubkey are valid according to lnp.config.MAX_GID
+        if not 0 <= node.gid <= config.MAX_GID:
+            return f"GID {node.gid} not in range 0 <= GID <= {config.MAX_GID}"
+        # Test the pubkey is valid
+        try:
+            _pubkey = PublicKey(bytes.fromhex(node.pubkey))
+        except Exception as e:
+            logger.exception("Error converting to valid pubkey from hex string")
+            return f"Error with pubkey: {e}"
+
+        # All looks ok, let's add
+        logger.debug(f"pubkey={node.pubkey}")
+        logger.debug(f"remote_host={node.remote_host}")
+        logger.debug(f"remote_port={node.outbound_port}")
+        logger.debug(f"local_listen_port={node.inbound_port}")
+        logger.debug(f"generated_gid={node.gid}")
+
         self.nodes.append(node)
         self.by_pubkey[str(node.pubkey)] = node
         self.by_gid[int(node.gid)] = node
         self.by_short_gid[node.short_gid] = node
+        if write:
+            with open(config.router_db, "a") as f:
+                f.write(node.__repr__() + "\n")
         logger.info(f"Added node {node} to router.")
 
-    def remove(self, pubkey: int):
+    def remove(self, pubkey: str):
         """Remove a node from the router by gid or pubkey.
         """
+        # First remove from router file
+        with open(config.router_db, "r+") as f:
+            lines = f.readlines()
+            f.seek(0)
+            for line in lines:
+                if pubkey not in line:
+                    f.write(line)
+            f.truncate()
+
+        # Next remove from router in memory
         for node in self.nodes:
-            if node.gid == pubkey:
+            if node.pubkey == pubkey:
                 self.nodes.remove(node)
                 del self.by_gid[node.gid]
                 del self.by_pubkey[pubkey]
@@ -232,3 +273,9 @@ class Router:
     def cleanup(self, gid):
         self.by_gid[gid].outbound = None
         self.by_gid[gid].inbound = None
+
+    def load(self):
+        with open(config.router_db, "rt") as f:
+            for line in f:
+                _node = eval(line)
+                self.add(_node, write=False)

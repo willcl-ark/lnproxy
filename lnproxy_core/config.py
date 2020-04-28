@@ -49,6 +49,7 @@ node_secret_key = None
 key_sends = {}
 MAX_GID: int = 0xFFFFFFFFFFFF
 router = None
+router_db = None
 gid = None
 # How many bytes to use to generate a short_send_id
 SEND_ID_LEN = 1

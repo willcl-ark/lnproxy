@@ -71,7 +71,7 @@ export LISTEN_PORT="<local_open_port>"
 export REMOTE_PUBKEY="<their_node_pubkey>"  
 ```
 
-Now we can add the node to the Lnproxy router and make the connection:
+Now we can add the node to the Lnproxy router and make the connection. Nodes added to the router are persisted across restarts and can be removed using the `remove-node` command (or deleting `lightning_dir/router` file):
 
 ```bash
 # Add a remote node to lnproxy plugin router

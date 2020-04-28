@@ -5,7 +5,6 @@ import uuid
 from pathlib import Path
 
 import trio
-from coincurve import PublicKey
 from pyln.client import Plugin
 
 import lnproxy_core as lnp
@@ -39,6 +38,13 @@ plugin.add_option(
     opt_type="string",
 )
 
+plugin.add_option(
+    name="no-router",
+    default=False,
+    description="If set to True, will not add nodes from ../lightning_dir/router file automatically",
+    opt_type="bool",
+)
+
 
 @plugin.method("show-router")
 def show_router(plugin=None):
@@ -60,6 +66,12 @@ def node_addr(pubkey, plugin=None):
     return f"{_node.host_remote}:{_node.port_remote}"
 
 
+@plugin.method("test")
+def test(plugin=None):
+    print("Hello, world.")
+    lightning_dir = plugin.lightning_dir
+
+
 @plugin.method("add-node")
 def add_node(remote_node, listen_port, plugin=None):
     """Add a node to the plugin routing table.
@@ -69,32 +81,6 @@ def add_node(remote_node, listen_port, plugin=None):
     pubkey, remote_address = remote_node.split("@")
     _host, _port = remote_address.split(":")
     gid = int(pubkey, 16) % (send_id_len * 256)
-
-    print(f"pubkey={pubkey}")
-    print(f"remote_host={_host}")
-    print(f"remote_port={_port}")
-    print(f"local_listen_port={listen_port}")
-    print(f"generated_gid={gid}")
-    # Check that GID and pubkey are valid according to lnp.config.MAX_GID
-    if not 0 <= gid <= lnp.config.MAX_GID:
-        return f"GID {gid} not in range 0 <= GID <= {lnp.config.MAX_GID}"
-    # Test the pubkey is valid
-    try:
-        _pubkey = PublicKey(bytes.fromhex(pubkey))
-    except Exception as e:
-        logger.exception("Error converting to valid pubkey from hex string")
-        return f"Error with pubkey: {e}"
-
-    # Check for dupes
-    # Generate a unique GID if it already exists.
-    # TODO: could cause issues
-    while gid in lnp.config.router:
-        gid = gid + 1
-    if pubkey in lnp.config.router:
-        return (
-            f"Pubkey {pubkey} already in router, remove before adding again: "
-            f"{lnp.config.router.by_pubkey[pubkey]}"
-        )
 
     # Create the node
     _node = lnp.network.Node(gid, str(pubkey), _host, int(_port), listen_port)
@@ -255,12 +241,23 @@ def init(options, configuration, plugin):
     lnp.config.node_info = plugin.rpc.getinfo()
     logger.debug(lnp.config.node_info)
 
-    # Add ourselves to the routing table
-    lnp.config.gid = int(lnp.config.node_info["id"], 16) % (send_id_len * 256)
-    _node = lnp.network.Node(
-        gid=int(lnp.config.gid), pubkey=str(lnp.config.node_info["id"]), listen=False,
-    )
-    trio.from_thread.run_sync(lnp.config.router.add, _node)
+    lnp.config.router_db = plugin.lightning_dir + "/router"
+    # If router file exists, load it
+    if Path(lnp.config.router_db).exists():
+        lnp.config.router.load()
+    else:
+        # If not, create the router file
+        with open(lnp.config.router_db, "at"):
+            pass
+    if lnp.config.node_info["id"] not in lnp.config.router:
+        # Add ourselves to the routing table
+        lnp.config.gid = int(lnp.config.node_info["id"], 16) % (send_id_len * 256)
+        _node = lnp.network.Node(
+            gid=int(lnp.config.gid),
+            pubkey=str(lnp.config.node_info["id"]),
+            listen=False,
+        )
+        trio.from_thread.run_sync(lnp.config.router.add, _node)
 
     logger.debug(lnp.config.router)
 
