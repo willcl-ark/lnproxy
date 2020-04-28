@@ -133,7 +133,7 @@ class Node:
         try:
             await self.proxy.start()
         except trio.ClosedResourceError:
-            logger.error(f"Remote peer of node {self.gid} closed the connection")
+            logger.error(f"Remote peer {self.pubkey} closed the connection")
         except (Exception, trio.MultiError):
             logger.exception(f"Unhandled exception in handle_outbound() for {self.gid}")
         finally:
@@ -145,12 +145,15 @@ class Node:
         This will be run once per outbound connection made by C-Lightning (using rpc
         `proxy-connect`) so that each connection has it's own socket address.
         """
+        # We reset outbound port to 0 here for re-connections, this means kernel will
+        # assign a new, unused port to us each time.
+        self.outbound_port = 0
         listeners = await trio.open_tcp_listeners(
             self.outbound_port, host="127.0.0.1", backlog=None
         )
         self.outbound_port = listeners[0].socket.getsockname()[1]
         logger.debug(
-            f"Listening on 127.0.0.1:{self.outbound_port} for outbound connections to node {self.gid}"
+            f"Listening on 127.0.0.1:{self.outbound_port} for outbound connections to node {self.pubkey}"
         )
         await trio.sleep(0.2)
 

@@ -129,8 +129,14 @@ def proxy_connect(pubkey, plugin=None):
         node = lnp.config.router.by_pubkey[pubkey]
     except LookupError as e:
         return f"Could not find GID {pubkey} in router.\n{e}"
-    logger.debug(f"proxy-connect to node {node.pubkey} via lnproxy plugin")
 
+    # If a proxy is already running, cancel it
+    if node.proxy:
+        logger.debug("Found active proxy connection for this node, stopping.")
+        node.proxy.stop()
+        node.proxy = None
+
+    logger.debug(f"proxy-connect to node {node.pubkey} via lnproxy plugin")
     node.rpc = plugin.rpc
     node.outbound = True
 

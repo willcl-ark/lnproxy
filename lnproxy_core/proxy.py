@@ -21,6 +21,7 @@ class Proxy:
         self.count_to_remote = 0
         self.bytes_to_remote = 0
         self.bytes_from_remote = 0
+        self.cancel_scope = trio.CancelScope()
 
     async def read_message(
         self,
@@ -127,16 +128,20 @@ class Proxy:
         util.gid_key.set(self.node.gid)
 
         # Proxy the connections
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(
-                self._to_remote,
-                self.node.stream_c_lightning,
-                self.node.stream_remote.send_all,
-                self.stream_init,
-            )
-            nursery.start_soon(
-                self._from_remote,
-                self.node.stream_remote,
-                self.node.stream_c_lightning.send_all,
-                self.q_init,
-            )
+        with self.cancel_scope:
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(
+                    self._to_remote,
+                    self.node.stream_c_lightning,
+                    self.node.stream_remote.send_all,
+                    self.stream_init,
+                )
+                nursery.start_soon(
+                    self._from_remote,
+                    self.node.stream_remote,
+                    self.node.stream_c_lightning.send_all,
+                    self.q_init,
+                )
+
+    def stop(self):
+        trio.from_thread.run_sync(self.cancel_scope.cancel)
