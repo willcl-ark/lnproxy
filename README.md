@@ -14,12 +14,6 @@ Proxy removes onion (1300B) before HTLC transmission and receiver dynamically re
 * [jq](https://stedolan.github.io/jq/download/) for your system (for the helper scripts)
 
 
-### libsecp256k1 installation
-
-First install libsecp256k1 from source as per the [project installation instructions](https://github.com/bitcoin-core/secp256k1)
-
-On Debian? See this [comment](https://github.com/ludbb/secp256k1-py/issues/24#issuecomment-397505150) on issue 24.
-
 ### C Lightning installation
 
 Clone the C-Lightning branch below. This branch includes two plugins by default:
