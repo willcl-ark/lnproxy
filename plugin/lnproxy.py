@@ -225,7 +225,8 @@ def check_onion_tool(_plugin):
 
 
 def exit_gracefully(signum, frame):
-    raise KeyboardInterrupt(f"Killed by signal {signum}")
+    _signal = signal.getsignal(signum)
+    raise KeyboardInterrupt(f"Killed by signal {_signal}")
 
 
 # Register kill signal handlers
