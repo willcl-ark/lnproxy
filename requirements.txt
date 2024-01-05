@@ -14,7 +14,7 @@ idna==2.9
 -e git+https://github.com/willcl-ark/lnproxy.git@8d3e795b998e05e7261004bb7e7e3fb2081adb34#egg=lnproxy
 outcome==1.0.1
 pycparser==2.20
-pycryptodome==3.9.7
+pycryptodome==3.19.1
 pyln-client==0.8.0
 secp256k1==0.13.2
 sniffio==1.1.0
